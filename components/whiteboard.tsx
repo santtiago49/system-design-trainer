@@ -15,6 +15,7 @@ import {
   type Edge,
 } from "@xyflow/react";
 import { nanoid } from "nanoid";
+import { PanelLeftOpen } from "lucide-react";
 import { CATALOG_BY_ID } from "@/lib/catalog";
 import { SCENARIOS, SCENARIOS_BY_ID } from "@/lib/scenarios";
 import { simulate } from "@/lib/simulate";
@@ -69,6 +70,14 @@ function Board() {
   const [nodes, setNodes, onNodesChange] = useNodesState<DesignNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [users, setUsers] = useState(SCENARIOS[0].dailyActiveUsers);
+  const [paletteOpen, setPaletteOpen] = useState(true);
+
+  const togglePalette = useCallback((open: boolean) => {
+    setPaletteOpen(open);
+    try {
+      localStorage.setItem("sdt:palette-open", String(open));
+    } catch {}
+  }, []);
 
   const scenario = SCENARIOS_BY_ID[scenarioId];
 
@@ -97,6 +106,9 @@ function Board() {
       if (stored && SCENARIOS_BY_ID[stored]) initial = stored;
     } catch {}
     switchScenario(initial);
+    try {
+      setPaletteOpen(localStorage.getItem("sdt:palette-open") !== "false");
+    } catch {}
     setHydrated(true);
   }, [switchScenario]);
 
@@ -135,11 +147,13 @@ function Board() {
 
   return (
     <SimulationContext.Provider value={simulation}>
-      <div className="grid h-screen grid-cols-[300px_1fr]">
+      <div className={`grid h-screen ${paletteOpen ? "grid-cols-[300px_1fr]" : "grid-cols-[1fr]"}`}>
         {/* Left sidebar */}
-        <aside className="flex min-h-0 flex-col border-r border-line bg-white">
-          <Palette onAdd={(id) => addComponent(id)} />
-        </aside>
+        {paletteOpen && (
+          <aside className="flex min-h-0 flex-col border-r border-line bg-white">
+            <Palette onAdd={(id) => addComponent(id)} onClose={() => togglePalette(false)} />
+          </aside>
+        )}
 
         {/* Canvas */}
         <main
@@ -155,6 +169,14 @@ function Board() {
             if (catalogId) addComponent(catalogId, screenToFlowPosition({ x: event.clientX - 100, y: event.clientY - 30 }));
           }}
         >
+          {!paletteOpen && (
+            <button
+              onClick={() => togglePalette(true)}
+              className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 shadow-sm hover:text-ink"
+            >
+              <PanelLeftOpen className="size-4" /> Components
+            </button>
+          )}
           <ReactFlow
             nodes={nodes}
             edges={edges}

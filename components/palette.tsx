@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CATALOG, CATEGORY_LABELS, type Category, type Provider } from "@/lib/catalog";
+import { PanelLeftClose } from "lucide-react";
 import { ServiceIcon } from "./icons";
 
 export const DRAG_TYPE = "application/x-sd-component";
@@ -33,7 +34,7 @@ function Tile({ catalogId, name, hint, onAdd }: {
   );
 }
 
-export function Palette({ onAdd }: { onAdd: (catalogId: string) => void }) {
+export function Palette({ onAdd, onClose }: { onAdd: (catalogId: string) => void; onClose: () => void }) {
   const [provider, setProvider] = useState<Exclude<Provider, "generic">>("aws");
   const items = CATALOG.filter((c) => c.provider === provider).sort(
     (a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)
@@ -43,16 +44,21 @@ export function Palette({ onAdd }: { onAdd: (catalogId: string) => void }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between px-4 pb-2 pt-4">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Components</h2>
-        <div className="flex rounded-lg bg-zinc-100 p-0.5 text-xs">
-          {(["aws", "azure"] as const).map((p) => (
-            <button
-              key={p}
-              onClick={() => setProvider(p)}
-              className={`rounded-md px-2 py-0.5 font-medium ${provider === p ? "bg-white shadow-sm" : "text-zinc-500"}`}
-            >
-              {p === "aws" ? "AWS" : "Azure"}
-            </button>
-          ))}
+        <div className="flex items-center gap-1">
+          <div className="flex rounded-lg bg-zinc-100 p-0.5 text-xs">
+            {(["aws", "azure"] as const).map((p) => (
+              <button
+                key={p}
+                onClick={() => setProvider(p)}
+                className={`rounded-md px-2 py-0.5 font-medium ${provider === p ? "bg-white shadow-sm" : "text-zinc-500"}`}
+              >
+                {p === "aws" ? "AWS" : "Azure"}
+              </button>
+            ))}
+          </div>
+          <button onClick={onClose} title="Hide components" className="rounded-md p-1 text-zinc-500 hover:bg-zinc-100 hover:text-ink">
+            <PanelLeftClose className="size-4" />
+          </button>
         </div>
       </div>
 
