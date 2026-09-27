@@ -11,6 +11,8 @@ export type DesignNodeData = {
   customCategory?: Category | null;
   classification?: { confidence: number; mock: boolean } | null;
   classifying?: boolean;
+  // Set by failure scenarios: the component is down and carries no traffic.
+  failed?: boolean;
 };
 
 export type GraphNode = { id: string; data: DesignNodeData };
@@ -18,7 +20,7 @@ export type GraphEdge = { id: string; source: string; target: string };
 
 export type Load = { reads: number; writes: number };
 
-export type NodeStatus = "idle" | "ok" | "warn" | "over" | "unclassified";
+export type NodeStatus = "idle" | "ok" | "warn" | "over" | "unclassified" | "down";
 
 export type NodeSim = {
   status: NodeStatus;
@@ -98,6 +100,7 @@ export function simulate(
 ): Simulation {
   const items = new Map<string, CatalogItem>();
   for (const node of nodes) {
+    if (node.data.failed) continue;
     const item = resolveItem(node.data.catalogId, {
       name: node.data.customName ?? "",
       category: node.data.customCategory ?? null,
@@ -209,6 +212,10 @@ export function simulate(
   for (const node of nodes) {
     const item = items.get(node.id);
     const data = node.data;
+    if (data.failed) {
+      sims[node.id] = { status: "down", load: ZERO, capacity: 0, utilization: 0, supportedUsers: Infinity, availability: 0 };
+      continue;
+    }
     if (!item) {
       sims[node.id] = { status: "unclassified", load: ZERO, capacity: 0, utilization: 0, supportedUsers: Infinity, availability: 1 };
       continue;
@@ -277,6 +284,7 @@ function findings(
   }
 
   for (const node of nodes) {
+    if (node.data.failed) continue;
     const item = items.get(node.id);
     const sim = sims[node.id];
     if (!item) {

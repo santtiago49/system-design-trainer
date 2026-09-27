@@ -51,6 +51,7 @@ export const STATUS_STYLES = {
   ok: { text: "text-ok", bar: "bg-ok", border: "border-line", stroke: "#15803d" },
   warn: { text: "text-warn", bar: "bg-warn", border: "border-warn/50", stroke: "#b45309" },
   over: { text: "text-over", bar: "bg-over", border: "border-over/60", stroke: "#dc2626" },
+  down: { text: "text-over", bar: "bg-over", border: "border-dashed border-over", stroke: "#e5a3a3" },
 } as const;
 
 /** Official AWS/Azure icon for a catalog item; falls back to the category glyph for custom components. */

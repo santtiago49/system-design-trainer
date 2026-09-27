@@ -36,7 +36,9 @@ export function ComponentNode({ id, data }: NodeProps<DesignNode>) {
   const utilization = sim?.utilization ?? 0;
 
   return (
-    <div className={`w-56 rounded-xl border bg-white shadow-sm ${status.border} ${isBottleneck ? "ring-2 ring-over/40" : ""}`}>
+    <div
+      className={`w-56 rounded-xl border bg-white shadow-sm transition-opacity ${status.border} ${isBottleneck ? "ring-2 ring-over/40" : ""} ${sim?.status === "down" ? "opacity-60" : ""}`}
+    >
       <Handle type="target" position={Position.Left} />
       <div className="flex items-start gap-2.5 px-3 pt-2.5">
         <div className="flex size-8 shrink-0 items-center justify-center">
@@ -64,6 +66,8 @@ export function ComponentNode({ id, data }: NodeProps<DesignNode>) {
           </div>
         ) : !item ? (
           <div className="text-xs text-zinc-400">Name it in the inspector to classify</div>
+        ) : sim?.status === "down" ? (
+          <div className="text-xs font-medium text-over">Failed</div>
         ) : !sim || sim.status === "idle" ? (
           <div className="text-xs text-zinc-400">Not on the traffic path</div>
         ) : item.category === "monitoring" ? (
