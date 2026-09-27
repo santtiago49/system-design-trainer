@@ -11,6 +11,8 @@ export type DesignNodeData = {
   customCategory?: Category | null;
   classification?: { confidence: number; mock: boolean } | null;
   classifying?: boolean;
+  // Set when the component was imported from a real Azure resource.
+  azure?: { id: string; name: string; resourceGroup: string; sku: string | null };
   // Set by failure scenarios: the component is down and carries no traffic.
   failed?: boolean;
 };

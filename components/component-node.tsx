@@ -71,10 +71,14 @@ export function ComponentNode({ id, data, selected, dragging }: NodeProps<Design
           <ServiceIcon catalogId={data.catalogId} category={data.customCategory ?? null} size={30} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">{item?.name ?? (data.customName || "Custom component")}</div>
+          <div className="truncate text-sm font-medium" title={data.azure ? `${data.azure.name} · ${data.azure.resourceGroup}` : undefined}>
+            {data.azure?.name ?? item?.name ?? (data.customName || "Custom component")}
+          </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-zinc-500">
             <span className={`rounded px-1 py-px font-medium ${provider.className}`}>{provider.label}</span>
-            <span className="truncate">{item ? CATEGORY_LABELS[item.category] : "Unclassified"}</span>
+            <span className="truncate">
+              {data.azure && item ? `${item.name}${data.azure.sku ? ` · ${data.azure.sku}` : ""}` : item ? CATEGORY_LABELS[item.category] : "Unclassified"}
+            </span>
           </div>
         </div>
         {item && item.category !== "monitoring" && (
@@ -118,7 +122,7 @@ export function ComponentNode({ id, data, selected, dragging }: NodeProps<Design
       </div>
       <Handle type="source" position={Position.Right} />
       {item && (
-        <PropertiesCard visible={showProperties} title={item.name}>
+        <PropertiesCard visible={showProperties} title={data.azure?.name ?? item.name}>
           <NodeProperties id={id} data={data} item={item} sim={sim} />
         </PropertiesCard>
       )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Lock, Pencil, Star, X } from "lucide-react";
+import { BookOpen, Cloud, Lock, Pencil, Star, X } from "lucide-react";
 import { CHAPTERS, LEVELS } from "@/lib/levels";
 import { isUnlocked, rankFor, totalXp, type Progress } from "@/lib/progress";
 
@@ -38,10 +38,11 @@ type Props = {
   currentLevelId: string | null;
   onPlay: (levelId: string) => void;
   onFreePlay: () => void;
+  onImportAzure: () => void;
   onClose: (() => void) | null;
 };
 
-export function LevelSelect({ progress, currentLevelId, onPlay, onFreePlay, onClose }: Props) {
+export function LevelSelect({ progress, currentLevelId, onPlay, onFreePlay, onImportAzure, onClose }: Props) {
   const earned = Object.values(progress.stars).reduce((a, b) => a + b, 0);
 
   return (
@@ -64,16 +65,28 @@ export function LevelSelect({ progress, currentLevelId, onPlay, onFreePlay, onCl
           </div>
         </header>
 
-        <button
-          onClick={onFreePlay}
-          className="mt-6 flex w-full items-center gap-3 rounded-xl border border-dashed border-zinc-300 bg-white/60 p-4 text-left hover:border-zinc-400 hover:bg-white"
-        >
-          <Pencil className="size-5 text-zinc-500" />
-          <div>
-            <div className="text-sm font-semibold">Free play</div>
-            <div className="text-xs text-zinc-500">Open whiteboard with the 1M-user web app scenario. No objectives, no stars.</div>
-          </div>
-        </button>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <button
+            onClick={onFreePlay}
+            className="flex items-center gap-3 rounded-xl border border-dashed border-zinc-300 bg-white/60 p-4 text-left hover:border-zinc-400 hover:bg-white"
+          >
+            <Pencil className="size-5 shrink-0 text-zinc-500" />
+            <div>
+              <div className="text-sm font-semibold">Free play</div>
+              <div className="text-xs text-zinc-500">Open whiteboard with the 1M-user web app scenario. No objectives, no stars.</div>
+            </div>
+          </button>
+          <button
+            onClick={onImportAzure}
+            className="flex items-center gap-3 rounded-xl border border-dashed border-azure/40 bg-white/60 p-4 text-left hover:border-azure hover:bg-white"
+          >
+            <Cloud className="size-5 shrink-0 text-azure" />
+            <div>
+              <div className="text-sm font-semibold">Import from Azure</div>
+              <div className="text-xs text-zinc-500">Read a real subscription with your Azure CLI login and check it on the canvas.</div>
+            </div>
+          </button>
+        </div>
 
         {CHAPTERS.map((chapter) => {
           const levels = LEVELS.filter((l) => l.chapter === chapter.number);

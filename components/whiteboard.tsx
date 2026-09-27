@@ -9,6 +9,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
+  useNodesInitialized,
   useNodesState,
   useReactFlow,
   type Connection,
@@ -16,7 +17,7 @@ import {
   type XYPosition,
 } from "@xyflow/react";
 import { nanoid } from "nanoid";
-import { Map as MapIcon, PanelLeftOpen, Play } from "lucide-react";
+import { Cloud, Map as MapIcon, PanelLeftOpen, Play } from "lucide-react";
 import { CATALOG_BY_ID } from "@/lib/catalog";
 import { SCENARIOS, SCENARIOS_BY_ID, type Scenario } from "@/lib/scenarios";
 import { evaluateLevel, LEVELS_BY_ID, nextLevel, type LevelResult } from "@/lib/levels";
@@ -33,6 +34,8 @@ import { RunDrawer } from "./run-drawer";
 import { LevelHud } from "./level-hud";
 import { LevelResultModal } from "./level-result";
 import { LevelSelect } from "./level-select";
+import { AzureHud, AzureImportDialog } from "./azure-hud";
+import { layout, monitoringPosition, type AzureImport } from "@/lib/azure-import";
 import { SimulationContext } from "./simulation-context";
 
 const nodeTypes = { component: ComponentNode, line: LineNodeView, text: TextNodeView };
@@ -68,16 +71,59 @@ function newNode(catalogId: string, position: { x: number; y: number }): DesignN
   };
 }
 
-type Workspace = { kind: "sandbox"; scenarioId: string } | { kind: "level"; levelId: string };
+type Workspace =
+  | { kind: "sandbox"; scenarioId: string }
+  | { kind: "level"; levelId: string }
+  | { kind: "azure"; subscriptionId: string };
 
 const SANDBOX: Workspace = { kind: "sandbox", scenarioId: SCENARIOS[0].id };
 
 function workspaceScenario(workspace: Workspace): Scenario {
-  return workspace.kind === "level" ? LEVELS_BY_ID[workspace.levelId].scenario : SCENARIOS_BY_ID[workspace.scenarioId];
+  if (workspace.kind === "level") return LEVELS_BY_ID[workspace.levelId].scenario;
+  // An imported subscription has no scenario of its own; the traffic profile of a
+  // typical web app stands in until real metrics arrive, with users editable.
+  if (workspace.kind === "azure") return SCENARIOS_BY_ID["web-1m"];
+  return SCENARIOS_BY_ID[workspace.scenarioId];
 }
 
 function designKey(workspace: Workspace): string {
-  return workspace.kind === "level" ? `sdt:design:level:${workspace.levelId}` : `sdt:design:${workspace.scenarioId}`;
+  if (workspace.kind === "level") return `sdt:design:level:${workspace.levelId}`;
+  if (workspace.kind === "azure") return `sdt:design:azure:${workspace.subscriptionId}`;
+  return `sdt:design:${workspace.scenarioId}`;
+}
+
+const importKey = (subscriptionId: string) => `sdt:azure-import:${subscriptionId}`;
+
+function loadImport(subscriptionId: string): AzureImport | null {
+  try {
+    const raw = localStorage.getItem(importKey(subscriptionId));
+    return raw ? (JSON.parse(raw) as AzureImport) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Canvas design for an imported subscription: its resources in tier columns plus a Users node. */
+function azureDesign(result: AzureImport, users: number): SavedDesign {
+  const ids = new Map<string, string>();
+  const nodes: AppNode[] = [newNode("users", { x: -300, y: 0 })];
+  const placed = layout(result.resources);
+  for (const r of placed) {
+    const node = newNode(r.catalogId, r.position);
+    node.data = { ...node.data, units: r.units, multiAz: r.multiAz, azure: { id: r.azureId, name: r.name, resourceGroup: r.resourceGroup, sku: r.sku } };
+    ids.set(r.azureId, node.id);
+    nodes.push(node);
+  }
+  if (result.monitoring > 0) {
+    const node = newNode("az-monitor", monitoringPosition(placed));
+    node.data = { ...node.data, azure: { id: "monitoring", name: `Monitoring (${result.monitoring} resources)`, resourceGroup: "", sku: null } };
+    nodes.push(node);
+  }
+  const edges: Edge[] = result.edges.flatMap((e) => {
+    const source = ids.get(e.source), target = ids.get(e.target);
+    return source && target ? [{ id: `${source}-${target}`, source, target, type: "load" }] : [];
+  });
+  return { nodes, edges, users };
 }
 
 function emptyDesign(scenario: Scenario): SavedDesign {
@@ -117,7 +163,13 @@ function loadWorkspace(): Workspace | null {
     const raw = localStorage.getItem("sdt:workspace");
     if (raw) {
       const workspace = JSON.parse(raw) as Workspace;
-      if (workspace.kind === "level" ? LEVELS_BY_ID[workspace.levelId] : SCENARIOS_BY_ID[workspace.scenarioId]) return workspace;
+      const valid =
+        workspace.kind === "level"
+          ? LEVELS_BY_ID[workspace.levelId]
+          : workspace.kind === "azure"
+            ? loadImport(workspace.subscriptionId)
+            : SCENARIOS_BY_ID[workspace.scenarioId];
+      if (valid) return workspace;
     }
     // Designs saved before levels existed.
     const legacy = localStorage.getItem("sdt:scenario");
@@ -164,6 +216,11 @@ function Board() {
   const [draft, setDraft] = useState<{ start: XYPosition; end: XYPosition; flowStart: XYPosition } | null>(null);
   const [progress, setProgress] = useState<Progress>({ stars: {} });
   const [showLevels, setShowLevels] = useState(false);
+  const [showAzureImport, setShowAzureImport] = useState(false);
+  // Fit the view once a newly opened design's nodes have been measured.
+  const [fitPending, setFitPending] = useState(false);
+  const nodesInitialized = useNodesInitialized();
+  const [azureImport, setAzureImport] = useState<AzureImport | null>(null);
   const [levelEval, setLevelEval] = useState<LevelResult | null>(null);
   const [resultModal, setResultModal] = useState<ResultState | null>(null);
 
@@ -194,11 +251,32 @@ function Board() {
   const openWorkspace = useCallback(
     (next: Workspace) => {
       setWorkspace(next);
+      setAzureImport(next.kind === "azure" ? loadImport(next.subscriptionId) : null);
       applyDesign(loadDesign(next));
       setShowLevels(false);
-      requestAnimationFrame(() => fitView({ maxZoom: 1, padding: 0.15 }));
+      setFitPending(true);
     },
     [applyDesign, fitView]
+  );
+
+  useEffect(() => {
+    if (!fitPending || !nodesInitialized) return;
+    fitView({ maxZoom: 1, padding: 0.15 });
+    setFitPending(false);
+  }, [fitPending, nodesInitialized, fitView]);
+
+  const onAzureImported = useCallback(
+    (result: AzureImport) => {
+      const next: Workspace = { kind: "azure", subscriptionId: result.subscriptionId };
+      try {
+        localStorage.setItem(importKey(result.subscriptionId), JSON.stringify(result));
+        // A fresh import replaces the previous layout of this subscription.
+        localStorage.setItem(designKey(next), JSON.stringify(azureDesign(result, SCENARIOS_BY_ID["web-1m"].dailyActiveUsers)));
+      } catch {}
+      setShowAzureImport(false);
+      openWorkspace(next);
+    },
+    [openWorkspace]
   );
 
   useEffect(() => {
@@ -388,8 +466,8 @@ function Board() {
           {paletteOpen && (
             <aside className="flex min-h-0 flex-col border-r border-line bg-white">
               <Palette
-                key={level?.provider ?? "aws"}
-                initialProvider={level?.provider ?? "aws"}
+                key={level?.provider ?? (workspace.kind === "azure" ? "azure" : "aws")}
+                initialProvider={level?.provider ?? (workspace.kind === "azure" ? "azure" : "aws")}
                 onAdd={(id) => addComponent(id)}
                 onClose={() => togglePalette(false)}
               />
@@ -429,14 +507,31 @@ function Board() {
                   onOpenLevels={() => setShowLevels(true)}
                   onReset={() => applyDesign(emptyDesign(level.scenario))}
                 />
+              ) : hydrated && azureImport ? (
+                <AzureHud
+                  key={azureImport.subscriptionId}
+                  result={azureImport}
+                  onReimport={() => {
+                    if (confirm("Re-import replaces this canvas with a fresh read of the subscription. Continue?")) setShowAzureImport(true);
+                  }}
+                  onOpenLevels={() => setShowLevels(true)}
+                />
               ) : (
                 hydrated && (
-                  <button
-                    onClick={() => setShowLevels(true)}
-                    className="flex items-center gap-2 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 shadow-sm hover:text-ink"
-                  >
-                    <MapIcon className="size-4" /> Levels · free play
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowLevels(true)}
+                      className="flex items-center gap-2 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 shadow-sm hover:text-ink"
+                    >
+                      <MapIcon className="size-4" /> Levels · free play
+                    </button>
+                    <button
+                      onClick={() => setShowAzureImport(true)}
+                      className="flex items-center gap-2 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 shadow-sm hover:text-ink"
+                    >
+                      <Cloud className="size-4 text-azure" /> Import from Azure
+                    </button>
+                  </div>
                 )
               )}
             </div>
@@ -494,6 +589,8 @@ function Board() {
               nodesConnectable={!panning}
               elementsSelectable={!panning}
               className={panning ? "cursor-grab active:cursor-grabbing" : undefined}
+              // Imported subscriptions can hold dozens of components; allow zooming out to see them all.
+              minZoom={0.1}
               proOptions={{ hideAttribution: true }}
             >
               <Background gap={20} color="#d9d8d2" />
@@ -549,12 +646,17 @@ function Board() {
             )}
           </main>
 
+          {showAzureImport && <AzureImportDialog onImported={onAzureImported} onClose={() => setShowAzureImport(false)} />}
           {showLevels && (
             <LevelSelect
               progress={progress}
               currentLevelId={level?.id ?? null}
               onPlay={(levelId) => openWorkspace({ kind: "level", levelId })}
               onFreePlay={() => openWorkspace(SANDBOX)}
+              onImportAzure={() => {
+                setShowLevels(false);
+                setShowAzureImport(true);
+              }}
               onClose={() => setShowLevels(false)}
             />
           )}
