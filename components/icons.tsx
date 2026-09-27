@@ -52,3 +52,13 @@ export const STATUS_STYLES = {
   warn: { text: "text-warn", bar: "bg-warn", border: "border-warn/50", stroke: "#b45309" },
   over: { text: "text-over", bar: "bg-over", border: "border-over/60", stroke: "#dc2626" },
 } as const;
+
+/** Official AWS/Azure icon for a catalog item; falls back to the category glyph for custom components. */
+export function ServiceIcon({ catalogId, category, size = 24 }: { catalogId: string; category: Category | null; size?: number }) {
+  if (catalogId === "custom") {
+    const Icon = category ? CATEGORY_ICONS[category] : CustomIcon;
+    return <Icon className="text-zinc-600" style={{ width: size * 0.75, height: size * 0.75 }} />;
+  }
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={`/icons/${catalogId}.svg`} alt="" width={size} height={size} draggable={false} />;
+}

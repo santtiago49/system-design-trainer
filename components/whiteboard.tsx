@@ -242,7 +242,7 @@ function Board() {
 
   return (
     <SimulationContext.Provider value={simulation}>
-      <div className="grid h-screen grid-cols-[260px_1fr_340px] grid-rows-[auto_1fr]">
+      <div className="grid h-screen grid-cols-[300px_1fr_340px] grid-rows-[auto_1fr]">
         {/* Top bar */}
         <header className="col-span-3 flex items-center gap-6 border-b border-line bg-white px-4 py-2.5">
           <div className="flex items-center gap-2">

@@ -4,7 +4,7 @@ import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Loader2 } from "lucide-react";
 import { CATEGORY_LABELS, resolveItem } from "@/lib/catalog";
 import { formatNumber, type DesignNodeData } from "@/lib/simulate";
-import { CATEGORY_ICONS, CustomIcon, PROVIDER_STYLES, STATUS_STYLES } from "./icons";
+import { CATEGORY_ICONS, CustomIcon, PROVIDER_STYLES, ServiceIcon, STATUS_STYLES } from "./icons";
 import { useSimulation } from "./simulation-context";
 
 export type DesignNode = Node<DesignNodeData, "component">;
@@ -39,8 +39,8 @@ export function ComponentNode({ id, data }: NodeProps<DesignNode>) {
     <div className={`w-56 rounded-xl border bg-white shadow-sm ${status.border} ${isBottleneck ? "ring-2 ring-over/40" : ""}`}>
       <Handle type="target" position={Position.Left} />
       <div className="flex items-start gap-2.5 px-3 pt-2.5">
-        <div className="mt-0.5 rounded-lg bg-zinc-100 p-1.5 text-zinc-700">
-          <Icon className="size-4" />
+        <div className="flex size-8 shrink-0 items-center justify-center">
+          <ServiceIcon catalogId={data.catalogId} category={data.customCategory ?? null} size={30} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">{item?.name ?? (data.customName || "Custom component")}</div>

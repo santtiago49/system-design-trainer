@@ -2,17 +2,16 @@
 
 import { useState } from "react";
 import { CATALOG, CATEGORY_LABELS, CUSTOM_ID, type Category, type Provider } from "@/lib/catalog";
-import { CATEGORY_ICONS, CustomIcon } from "./icons";
+import { ServiceIcon } from "./icons";
 
 export const DRAG_TYPE = "application/x-sd-component";
 
 const CATEGORY_ORDER = Object.keys(CATEGORY_LABELS) as Category[];
 
-function PaletteItem({ catalogId, name, hint, Icon, onAdd }: {
+function Tile({ catalogId, name, hint, onAdd }: {
   catalogId: string;
   name: string;
   hint: string;
-  Icon: React.ComponentType<{ className?: string }>;
   onAdd: (catalogId: string) => void;
 }) {
   return (
@@ -23,18 +22,22 @@ function PaletteItem({ catalogId, name, hint, Icon, onAdd }: {
         event.dataTransfer.effectAllowed = "move";
       }}
       onClick={() => onAdd(catalogId)}
-      title={hint}
-      className="flex w-full cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-zinc-100 active:cursor-grabbing"
+      title={`${name}: ${hint}`}
+      className="flex cursor-grab flex-col items-center gap-1.5 rounded-lg px-1 py-2 text-center hover:bg-zinc-100 active:cursor-grabbing"
     >
-      <Icon className="size-4 shrink-0 text-zinc-500" />
-      <span className="truncate">{name}</span>
+      <span className="flex size-8 items-center justify-center">
+        <ServiceIcon catalogId={catalogId} category={null} size={32} />
+      </span>
+      <span className="line-clamp-2 text-[11px] leading-tight text-zinc-700">{name}</span>
     </button>
   );
 }
 
 export function Palette({ onAdd }: { onAdd: (catalogId: string) => void }) {
   const [provider, setProvider] = useState<Exclude<Provider, "generic">>("aws");
-  const items = CATALOG.filter((c) => c.provider === provider);
+  const items = CATALOG.filter((c) => c.provider === provider).sort(
+    (a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -54,26 +57,13 @@ export function Palette({ onAdd }: { onAdd: (catalogId: string) => void }) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-        <PaletteItem catalogId="users" name="Users" hint="Traffic source" Icon={CATEGORY_ICONS.client} onAdd={onAdd} />
-        <PaletteItem
-          catalogId={CUSTOM_ID}
-          name="Custom (Jev classifies it)"
-          hint="Any technology, e.g. Kafka or MongoDB. Jev decides its role."
-          Icon={CustomIcon}
-          onAdd={onAdd}
-        />
-        {CATEGORY_ORDER.map((category) => {
-          const group = items.filter((i) => i.category === category);
-          if (group.length === 0) return null;
-          return (
-            <div key={category} className="mt-2">
-              <div className="px-2 pb-0.5 pt-1 text-[11px] font-medium text-zinc-400">{CATEGORY_LABELS[category]}</div>
-              {group.map((i) => (
-                <PaletteItem key={i.id} catalogId={i.id} name={i.name} hint={i.blurb} Icon={CATEGORY_ICONS[i.category]} onAdd={onAdd} />
-              ))}
-            </div>
-          );
-        })}
+        <div className="grid grid-cols-3 gap-1">
+          <Tile catalogId="users" name="Users" hint="Traffic source" onAdd={onAdd} />
+          <Tile catalogId={CUSTOM_ID} name="Custom (Jev)" hint="Any technology, e.g. Kafka or MongoDB. Jev decides its role." onAdd={onAdd} />
+          {items.map((i) => (
+            <Tile key={i.id} catalogId={i.id} name={i.name} hint={`${CATEGORY_LABELS[i.category]}. ${i.blurb}`} onAdd={onAdd} />
+          ))}
+        </div>
       </div>
     </div>
   );
