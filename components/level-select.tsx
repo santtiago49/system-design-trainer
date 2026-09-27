@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { BookOpen, Cloud, Lock, Pencil, Star } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Progress as ProgressBar } from "@/components/ui/progress";
 import { CHAPTERS, LEVELS } from "@/lib/levels";
 import { isUnlocked, rankFor, totalXp, type Progress } from "@/lib/progress";
 
@@ -9,7 +11,7 @@ export function Stars({ count, size = "size-4" }: { count: number; size?: string
   return (
     <span className="flex gap-0.5">
       {[0, 1, 2].map((i) => (
-        <Star key={i} className={`${size} ${i < count ? "fill-amber-400 text-amber-400" : "text-zinc-300"}`} />
+        <Star key={i} className={`${size} ${i < count ? "fill-amber-400 text-amber-400" : "text-muted-foreground/40"}`} />
       ))}
     </span>
   );
@@ -23,13 +25,11 @@ export function RankBadge({ progress }: { progress: Progress }) {
     <div className="min-w-48">
       <div className="flex items-baseline justify-between gap-3 text-sm">
         <span className="font-semibold">{rank.title}</span>
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-muted-foreground">
           {xp} XP{rank.next && ` · ${rank.next.xp - xp} to ${rank.next.title}`}
         </span>
       </div>
-      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-100">
-        <div className="h-full rounded-full bg-amber-400 transition-all" style={{ width: `${pct}%` }} />
-      </div>
+      <ProgressBar value={pct} className="mt-1.5 h-1.5 *:data-[slot=progress-indicator]:bg-amber-400" />
     </div>
   );
 }
@@ -49,8 +49,8 @@ export function LevelSelect({ progress, currentLevelId, onPlay, onFreePlay }: Pr
       <div className="mx-auto max-w-5xl px-6 py-8">
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold">System design levels</h1>
-            <p className="mt-1 text-sm text-zinc-500">
+            <h1 className="text-2xl font-semibold tracking-tight">System design levels</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
               Build the architecture, press Run to test it, and earn up to 3 stars per level. {earned}/{LEVELS.length * 3} stars.
             </p>
           </div>
@@ -62,22 +62,22 @@ export function LevelSelect({ progress, currentLevelId, onPlay, onFreePlay }: Pr
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
           <button
             onClick={onFreePlay}
-            className="flex items-center gap-3 rounded-xl border border-dashed border-zinc-300 bg-white/60 p-4 text-left hover:border-zinc-400 hover:bg-white"
+            className="flex items-center gap-3 rounded-xl border border-dashed bg-card p-4 text-left transition-colors hover:bg-accent"
           >
-            <Pencil className="size-5 shrink-0 text-zinc-500" />
+            <Pencil className="size-5 shrink-0 text-muted-foreground" />
             <div>
               <div className="text-sm font-semibold">Free play</div>
-              <div className="text-xs text-zinc-500">Open whiteboard with the 1M-user web app scenario. No objectives, no stars.</div>
+              <div className="text-xs text-muted-foreground">Open whiteboard with the 1M-user web app scenario. No objectives, no stars.</div>
             </div>
           </button>
           <Link
             href="/integrations"
-            className="flex items-center gap-3 rounded-xl border border-dashed border-azure/40 bg-white/60 p-4 text-left hover:border-azure hover:bg-white"
+            className="flex items-center gap-3 rounded-xl border border-dashed border-azure/40 bg-card p-4 text-left transition-colors hover:bg-accent"
           >
             <Cloud className="size-5 shrink-0 text-azure" />
             <div>
               <div className="text-sm font-semibold">Import from Azure</div>
-              <div className="text-xs text-zinc-500">Sign in with Microsoft and put a real subscription on the canvas.</div>
+              <div className="text-xs text-muted-foreground">Sign in with Microsoft and put a real subscription on the canvas.</div>
             </div>
           </Link>
         </div>
@@ -87,9 +87,9 @@ export function LevelSelect({ progress, currentLevelId, onPlay, onFreePlay }: Pr
           return (
             <section key={chapter.number} className="mt-8">
               <div className="flex items-baseline gap-3">
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Chapter {chapter.number}</h2>
+                <Badge variant="secondary">Chapter {chapter.number}</Badge>
                 <span className="text-sm font-semibold">{chapter.title}</span>
-                <span className="text-xs text-zinc-400">{chapter.blurb}</span>
+                <span className="text-xs text-muted-foreground">{chapter.blurb}</span>
               </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {levels.map((level) => {
@@ -102,17 +102,17 @@ export function LevelSelect({ progress, currentLevelId, onPlay, onFreePlay }: Pr
                       key={level.id}
                       disabled={!unlocked}
                       onClick={() => onPlay(level.id)}
-                      className={`flex flex-col rounded-xl border bg-white p-4 text-left shadow-sm transition enabled:hover:-translate-y-0.5 enabled:hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 ${
-                        current ? "border-ink ring-1 ring-ink" : "border-line"
+                      className={`flex flex-col rounded-xl border bg-card p-4 text-left text-card-foreground shadow-xs transition enabled:hover:bg-accent/50 disabled:cursor-not-allowed disabled:opacity-50 ${
+                        current ? "border-primary ring-1 ring-primary" : ""
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-zinc-400">Level {number}</span>
-                        {unlocked ? <Stars count={stars} /> : <Lock className="size-4 text-zinc-400" />}
+                        <span className="text-xs font-medium text-muted-foreground">Level {number}</span>
+                        {unlocked ? <Stars count={stars} /> : <Lock className="size-4 text-muted-foreground" />}
                       </div>
                       <div className="mt-1 font-semibold">{level.title}</div>
-                      <p className="mt-1 line-clamp-3 text-xs text-zinc-500">{level.brief}</p>
-                      <div className="mt-auto flex items-center justify-between pt-3 text-[11px] text-zinc-400">
+                      <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{level.brief}</p>
+                      <div className="mt-auto flex items-center justify-between pt-3 text-[11px] text-muted-foreground">
                         <span>{level.scenario.dailyActiveUsers.toLocaleString("en-US")} daily users</span>
                         {level.reference && (
                           <span className="flex items-center gap-1 text-azure">
