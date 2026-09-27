@@ -15,7 +15,6 @@ import {
   type Edge,
 } from "@xyflow/react";
 import { nanoid } from "nanoid";
-import { RotateCcw } from "lucide-react";
 import { CATALOG_BY_ID } from "@/lib/catalog";
 import { SCENARIOS, SCENARIOS_BY_ID } from "@/lib/scenarios";
 import { simulate } from "@/lib/simulate";
@@ -139,33 +138,6 @@ function Board() {
       <div className="grid h-screen grid-cols-[300px_1fr]">
         {/* Left sidebar */}
         <aside className="flex min-h-0 flex-col border-r border-line bg-white">
-          <div className="border-b border-line p-4">
-            <select
-              value={scenarioId}
-              onChange={(e) => switchScenario(e.target.value)}
-              className="w-full rounded-lg border border-line px-2 py-1.5 text-sm font-medium"
-            >
-              {SCENARIOS.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.title}
-                </option>
-              ))}
-            </select>
-            <p className="mt-2 text-sm">{scenario.prompt}</p>
-            <ul className="mt-2 list-disc space-y-0.5 pl-4 text-xs text-zinc-500">
-              {scenario.requirements.map((r) => (
-                <li key={r}>{r}</li>
-              ))}
-            </ul>
-            <button
-              onClick={() => {
-                if (confirm("Clear this design?")) applyDesign(emptyDesign(scenarioId));
-              }}
-              className="mt-3 flex items-center gap-1 text-xs text-zinc-500 hover:text-ink"
-            >
-              <RotateCcw className="size-3" /> Start over
-            </button>
-          </div>
           <Palette onAdd={(id) => addComponent(id)} />
         </aside>
 
