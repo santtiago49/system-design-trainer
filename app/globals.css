@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #f6f6f3;
+  --color-ink: #1f1f24;
+  --color-line: #e4e3de;
+  --color-aws: #e07b00;
+  --color-azure: #0a6ed1;
+  --color-ok: #15803d;
+  --color-warn: #b45309;
+  --color-over: #dc2626;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  background: white;
+  border: 2px solid #9ca3af;
+}
+
+.react-flow__node.selected > div {
+  box-shadow: 0 0 0 2px #6d5bd0;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+.edge-flow {
+  stroke-dasharray: 6 4;
+  animation: dash 0.8s linear infinite;
+}
