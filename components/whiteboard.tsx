@@ -18,11 +18,12 @@ import { nanoid } from "nanoid";
 import { PanelLeftOpen, Play } from "lucide-react";
 import { CATALOG_BY_ID } from "@/lib/catalog";
 import { SCENARIOS, SCENARIOS_BY_ID } from "@/lib/scenarios";
-import { formatNumber, simulate } from "@/lib/simulate";
+import { formatNumber, simulate, type DesignNodeData } from "@/lib/simulate";
 import { runTests, type RunReport } from "@/lib/run";
 import { ComponentNode, type DesignNode } from "./component-node";
 import { LoadEdge } from "./load-edge";
 import { DRAG_TYPE, Palette } from "./palette";
+import { DesignActionsContext } from "./design-actions";
 import { RunDrawer } from "./run-drawer";
 import { SimulationContext } from "./simulation-context";
 
@@ -178,6 +179,35 @@ function Board() {
     [screenToFlowPosition, setNodes]
   );
 
+  const updateNode = useCallback(
+    (id: string, patch: Partial<DesignNodeData>) => {
+      setNodes((current) => current.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));
+    },
+    [setNodes]
+  );
+
+  const deleteNode = useCallback(
+    (id: string) => {
+      setNodes((current) => current.filter((n) => n.id !== id));
+      setEdges((current) => current.filter((e) => e.source !== id && e.target !== id));
+    },
+    [setNodes, setEdges]
+  );
+
+  // Esc closes the properties card by clearing the selection.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setNodes((current) => current.map((n) => (n.selected ? { ...n, selected: false } : n)));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [setNodes]);
+
+  const actions = useMemo(
+    () => ({ users, setUsers, updateNode, deleteNode }),
+    [users, updateNode, deleteNode]
+  );
+
   const onConnect = useCallback(
     (connection: Connection) => {
       if (connection.source === connection.target) return;
@@ -187,97 +217,99 @@ function Board() {
   );
 
   return (
-    <SimulationContext.Provider value={simulation}>
-      <div className={`grid h-screen ${paletteOpen ? "grid-cols-[300px_1fr]" : "grid-cols-[1fr]"}`}>
-        {/* Left sidebar */}
-        {paletteOpen && (
-          <aside className="flex min-h-0 flex-col border-r border-line bg-white">
-            <Palette onAdd={(id) => addComponent(id)} onClose={() => togglePalette(false)} />
-          </aside>
-        )}
-
-        {/* Canvas */}
-        <main
-          ref={canvasRef}
-          className="relative min-h-0"
-          onDragOver={(event) => {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "move";
-          }}
-          onDrop={(event) => {
-            event.preventDefault();
-            const catalogId = event.dataTransfer.getData(DRAG_TYPE);
-            if (catalogId) addComponent(catalogId, screenToFlowPosition({ x: event.clientX - 100, y: event.clientY - 30 }));
-          }}
-        >
-          {!paletteOpen && (
-            <button
-              onClick={() => togglePalette(true)}
-              className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 shadow-sm hover:text-ink"
-            >
-              <PanelLeftOpen className="size-4" /> Components
-            </button>
+    <DesignActionsContext.Provider value={actions}>
+      <SimulationContext.Provider value={simulation}>
+        <div className={`grid h-screen ${paletteOpen ? "grid-cols-[300px_1fr]" : "grid-cols-[1fr]"}`}>
+          {/* Left sidebar */}
+          {paletteOpen && (
+            <aside className="flex min-h-0 flex-col border-r border-line bg-white">
+              <Palette onAdd={(id) => addComponent(id)} onClose={() => togglePalette(false)} />
+            </aside>
           )}
-          <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
-            {rampUsers !== null && (
-              <div className="w-56 rounded-lg border border-line bg-white px-3 py-1.5 shadow-sm">
-                <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">Load test</span>
-                  <span className="font-medium">{formatNumber(rampUsers)} users</span>
+  
+          {/* Canvas */}
+          <main
+            ref={canvasRef}
+            className="relative min-h-0"
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              const catalogId = event.dataTransfer.getData(DRAG_TYPE);
+              if (catalogId) addComponent(catalogId, screenToFlowPosition({ x: event.clientX - 100, y: event.clientY - 30 }));
+            }}
+          >
+            {!paletteOpen && (
+              <button
+                onClick={() => togglePalette(true)}
+                className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 shadow-sm hover:text-ink"
+              >
+                <PanelLeftOpen className="size-4" /> Components
+              </button>
+            )}
+            <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
+              {rampUsers !== null && (
+                <div className="w-56 rounded-lg border border-line bg-white px-3 py-1.5 shadow-sm">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">Load test</span>
+                    <span className="font-medium">{formatNumber(rampUsers)} users</span>
+                  </div>
+                  <div className="mt-1 h-1 rounded-full bg-zinc-100">
+                    <div
+                      className="h-full rounded-full bg-ink"
+                      style={{ width: `${(Math.log(rampUsers / (users * RAMP_FROM)) / Math.log(RAMP_TO / RAMP_FROM)) * 100}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="mt-1 h-1 rounded-full bg-zinc-100">
-                  <div
-                    className="h-full rounded-full bg-ink"
-                    style={{ width: `${(Math.log(rampUsers / (users * RAMP_FROM)) / Math.log(RAMP_TO / RAMP_FROM)) * 100}%` }}
-                  />
-                </div>
+              )}
+              <button
+                onClick={startRun}
+                disabled={rampUsers !== null}
+                className="flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 text-sm font-medium text-white shadow-sm disabled:opacity-50"
+              >
+                <Play className="size-3.5 fill-current" /> {rampUsers !== null ? "Running…" : "Run"}
+              </button>
+            </div>
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              defaultEdgeOptions={{ type: "load" }}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              proOptions={{ hideAttribution: true }}
+            >
+              <Background gap={20} color="#d9d8d2" />
+              <Controls showInteractive={false} />
+              <MiniMap pannable zoomable className="!bg-white" />
+            </ReactFlow>
+            {nodes.length <= 1 && (
+              <div className="pointer-events-none absolute inset-x-0 top-6 text-center text-sm text-zinc-400">
+                Drag components from the left, then connect them starting from Users.
               </div>
             )}
-            <button
-              onClick={startRun}
-              disabled={rampUsers !== null}
-              className="flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 text-sm font-medium text-white shadow-sm disabled:opacity-50"
-            >
-              <Play className="size-3.5 fill-current" /> {rampUsers !== null ? "Running…" : "Run"}
-            </button>
-          </div>
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            defaultEdgeOptions={{ type: "load" }}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background gap={20} color="#d9d8d2" />
-            <Controls showInteractive={false} />
-            <MiniMap pannable zoomable className="!bg-white" />
-          </ReactFlow>
-          {nodes.length <= 1 && (
-            <div className="pointer-events-none absolute inset-x-0 top-6 text-center text-sm text-zinc-400">
-              Drag components from the left, then connect them starting from Users.
-            </div>
-          )}
-          {report && rampUsers === null && (
-            <RunDrawer
-              report={report}
-              stale={stale}
-              preview={preview}
-              onPreview={setPreview}
-              onRerun={startRun}
-              onClose={() => {
-                setReport(null);
-                setPreview(null);
-              }}
-            />
-          )}
-        </main>
-
-      </div>
-    </SimulationContext.Provider>
+            {report && rampUsers === null && (
+              <RunDrawer
+                report={report}
+                stale={stale}
+                preview={preview}
+                onPreview={setPreview}
+                onRerun={startRun}
+                onClose={() => {
+                  setReport(null);
+                  setPreview(null);
+                }}
+              />
+            )}
+          </main>
+  
+        </div>
+      </SimulationContext.Provider>
+    </DesignActionsContext.Provider>
   );
 }
 

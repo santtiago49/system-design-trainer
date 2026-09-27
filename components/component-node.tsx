@@ -1,21 +1,35 @@
 "use client";
 
-import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { Handle, NodeToolbar, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Loader2 } from "lucide-react";
 import { CATEGORY_LABELS, resolveItem } from "@/lib/catalog";
 import { formatNumber, type DesignNodeData } from "@/lib/simulate";
 import { CATEGORY_ICONS, CustomIcon, PROVIDER_STYLES, ServiceIcon, STATUS_STYLES } from "./icons";
+import { NodeProperties, UsersProperties } from "./node-properties";
 import { useSimulation } from "./simulation-context";
 
 export type DesignNode = Node<DesignNodeData, "component">;
 
-export function ComponentNode({ id, data }: NodeProps<DesignNode>) {
+/** Properties card that opens under the selected component; deselecting hides it. */
+function PropertiesCard({ visible, title, children }: { visible: boolean; title: string; children: React.ReactNode }) {
+  return (
+    <NodeToolbar isVisible={visible} position={Position.Bottom} offset={10}>
+      <div className="nodrag nopan nowheel w-72 rounded-xl border border-line bg-white p-3 text-ink shadow-lg">
+        <div className="mb-2 text-sm font-semibold">{title}</div>
+        {children}
+      </div>
+    </NodeToolbar>
+  );
+}
+
+export function ComponentNode({ id, data, selected, dragging }: NodeProps<DesignNode>) {
   const simulation = useSimulation();
   const sim = simulation.nodes[id];
   const item = resolveItem(data.catalogId, { name: data.customName ?? "", category: data.customCategory ?? null });
   const status = STATUS_STYLES[sim?.status ?? "idle"];
   const Icon = item ? CATEGORY_ICONS[item.category] : CustomIcon;
   const isBottleneck = simulation.bottleneckId === id && sim?.status !== "ok";
+  const showProperties = !!selected && !dragging;
 
   if (item?.category === "client") {
     return (
@@ -28,6 +42,9 @@ export function ComponentNode({ id, data }: NodeProps<DesignNode>) {
           {formatNumber(simulation.users)} DAU · {formatNumber(simulation.peakRps)} rps peak
         </div>
         <Handle type="source" position={Position.Right} />
+        <PropertiesCard visible={showProperties} title="Users">
+          <UsersProperties />
+        </PropertiesCard>
       </div>
     );
   }
@@ -65,7 +82,7 @@ export function ComponentNode({ id, data }: NodeProps<DesignNode>) {
             <Loader2 className="size-3 animate-spin" /> Jev is classifying…
           </div>
         ) : !item ? (
-          <div className="text-xs text-zinc-400">Name it in the inspector to classify</div>
+          <div className="text-xs text-zinc-400">Unclassified component</div>
         ) : sim?.status === "down" ? (
           <div className="text-xs font-medium text-over">Failed</div>
         ) : !sim || sim.status === "idle" ? (
@@ -87,6 +104,11 @@ export function ComponentNode({ id, data }: NodeProps<DesignNode>) {
         )}
       </div>
       <Handle type="source" position={Position.Right} />
+      {item && (
+        <PropertiesCard visible={showProperties} title={item.name}>
+          <NodeProperties id={id} data={data} item={item} sim={sim} />
+        </PropertiesCard>
+      )}
     </div>
   );
 }
