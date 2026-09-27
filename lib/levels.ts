@@ -184,7 +184,7 @@ export const LEVELS: Level[] = [
     hints: [
       "Users → Application Load Balancer → EC2. Check how many requests reach EC2 and how many each instance handles.",
       "Losing one instance must still leave enough capacity: plan for N+1.",
-      "Tick 'Spread across availability zones' and keep enough instances for half of them to carry the peak.",
+      "Tick 'Spread across availability zones' and keep enough instances that the other two zones can carry the peak when one goes down.",
     ],
   },
   {
@@ -244,7 +244,7 @@ export const LEVELS: Level[] = [
     bonus: [survives("single-failure", "Survive any single failure"), hasMonitoring],
     hints: [
       "Every self-managed component (servers, cache, database) needs multi-AZ.",
-      "When a zone dies, multi-AZ components lose half their units: the remaining half must carry the peak.",
+      "When a zone dies, multi-AZ components lose the units in that zone (up to a third): the rest must carry the peak.",
     ],
   },
   {
@@ -330,7 +330,7 @@ export const LEVELS: Level[] = [
     bonus: [noFinding("no-spof", "No single points of failure", "single point of failure"), uses("cdn", "Serve static assets from a CDN", ["cdn"])],
     hints: [
       "Users → Application Gateway → App Service → SQL Database, with zone redundancy on App Service and SQL.",
-      "The reference says to overprovision App Service to handle a zone failure: half the instances must carry the peak.",
+      "The reference puts at least one App Service instance in each of the region's zones and overprovisions, so the instances left after a zone failure still carry the peak.",
       "It also recommends a CDN for static assets like images and scripts.",
     ],
     reference: { title: "Baseline highly available zone-redundant web application", url: `${ARCH}/web-apps/app-service/architectures/baseline-zone-redundant` },

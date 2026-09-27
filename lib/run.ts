@@ -26,6 +26,9 @@ export type RunReport = {
 };
 
 const SPIKE_FACTOR = 10;
+// AWS regions have at least three AZs, and Azure regions with zones have three
+// (East US 2 has four), so multi-AZ components are spread over three zones.
+const ZONES = 3;
 const IGNORED: Category[] = ["client", "monitoring"];
 
 function categoryOf(node: GraphNode): Category | null {
@@ -124,17 +127,18 @@ export function runTests(nodes: GraphNode[], edges: GraphEdge[], scenario: Scena
     return { id, title, description, demand, supportedUsers: after.supportedUsers, simulation: after, ...judge(baseline, nodes, after, afterNodes, demand) };
   };
 
-  // Zone outage: single-AZ components are assumed to live in the failed zone;
-  // multi-AZ ones lose the half that was there (or fail over to a standby).
+  // Zone outage: single-AZ components are assumed to live in the failed zone.
+  // Multi-AZ ones are spread over the zones and lose the units in the fullest one,
+  // ceil(units / 3); a single multi-AZ unit fails over to its standby.
   failures.push(
     scenarioResult(
       "az-outage",
       "Availability zone outage",
-      "One AZ goes dark. Single-AZ components die; multi-AZ ones lose half their units.",
+      `One of ${ZONES} AZs goes dark. Single-AZ components die; multi-AZ ones lose the units in that zone (up to a third).`,
       nodes.map((n) => {
         if (!isSelfManaged(n)) return n;
         if (!n.data.multiAz) return { ...n, data: { ...n.data, failed: true } };
-        return { ...n, data: { ...n.data, units: Math.max(1, Math.floor(n.data.units / 2)) } };
+        return { ...n, data: { ...n.data, units: Math.max(1, n.data.units - Math.ceil(n.data.units / ZONES)) } };
       })
     )
   );
