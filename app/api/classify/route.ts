@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { classifyComponent } from "@/lib/server/jev";
+import { classifyComponent, describeJevError } from "@/lib/server/jev";
 
 export async function POST(request: Request) {
   const { name } = (await request.json()) as { name?: string };
@@ -12,6 +12,7 @@ export async function POST(request: Request) {
     return NextResponse.json(await classifyComponent(trimmed));
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Classification failed" }, { status: 502 });
+    const { message, status } = describeJevError(error);
+    return NextResponse.json({ error: message }, { status });
   }
 }

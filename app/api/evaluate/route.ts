@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { SCENARIOS_BY_ID } from "@/lib/scenarios";
-import { evaluateDesign } from "@/lib/server/jev";
+import { describeJevError, evaluateDesign } from "@/lib/server/jev";
 import type { EvaluationInput } from "@/lib/evaluation";
 
 export async function POST(request: Request) {
@@ -17,6 +17,7 @@ export async function POST(request: Request) {
     return NextResponse.json(await evaluateDesign(input, scenario));
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Jev evaluation failed" }, { status: 502 });
+    const { message, status } = describeJevError(error);
+    return NextResponse.json({ error: message }, { status });
   }
 }

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { TypeSafeClient, type Questions } from "@typesafe-ai/sdk";
+import { APIConnectionError, TypeSafeClient, type Questions } from "@typesafe-ai/sdk";
 import { CATEGORY_LABELS, type Category } from "../catalog";
 import type { Scenario } from "../scenarios";
 import type { EvaluationInput, EvaluationResult, ScoreAnswer } from "../evaluation";
@@ -9,8 +9,18 @@ let client: TypeSafeClient | null = null;
 
 function getClient(): TypeSafeClient | null {
   if (!process.env.TYPESAFE_API_KEY) return null;
-  client ??= new TypeSafeClient({ apiKey: process.env.TYPESAFE_API_KEY });
+  // Jev usually answers in well under a second, so a stalled request is better
+  // reported quickly than retried for half a minute.
+  client ??= new TypeSafeClient({ apiKey: process.env.TYPESAFE_API_KEY, timeout: 8_000, retry: { maxRetries: 1 } });
   return client;
+}
+
+/** A user-facing message for a failed Jev call. */
+export function describeJevError(error: unknown): { message: string; status: number } {
+  if (error instanceof APIConnectionError) {
+    return { message: "Jev didn't respond in time. Try again in a moment.", status: 504 };
+  }
+  return { message: "Jev request failed. Check the server logs.", status: 502 };
 }
 
 /* -------------------------------------------------------------------------- */
