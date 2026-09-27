@@ -37,5 +37,13 @@ Without a key, Jev calls fall back to a clearly labeled mock.
   - *Custom components*: type any technology (Kafka, MongoDB, NGINX…) and a Choice question
     classifies its architectural role, which gives it a capacity profile.
 
-Capacity figures in `lib/catalog.ts` are ballpark numbers for interview estimation, not vendor specs.
+Every number in `lib/catalog.ts` carries its source, shown in each component's properties card:
+
+- **Official limit**: a published AWS/Azure quota (for example API Gateway's 10,000 rps account throttle).
+- **Official SLA**: the vendor's monthly uptime commitment (AWS SLA pages, Microsoft SLA for Online Services).
+- **Vendor benchmark**: a figure the vendor publishes without guaranteeing it (Azure Redis, API Management, Web PubSub).
+- **Assumption**: no vendor publishes it, e.g. requests/s per app server or database, and all costs.
+- **No published limit**: the service scales on its own (ALB, SQS standard, Route 53), so it never becomes the bottleneck.
+
+Sources were last checked in September 2026. Quotas change and many can be raised, so treat results as estimates.
 Add scenarios in `lib/scenarios.ts`.

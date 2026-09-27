@@ -14,7 +14,7 @@ export type DesignNode = Node<DesignNodeData, "component">;
 function PropertiesCard({ visible, title, children }: { visible: boolean; title: string; children: React.ReactNode }) {
   return (
     <NodeToolbar isVisible={visible} position={Position.Bottom} offset={10}>
-      <div className="nodrag nopan nowheel w-72 rounded-xl border border-line bg-white p-3 text-ink shadow-lg">
+      <div className="nodrag nopan nowheel max-h-[70vh] w-80 overflow-y-auto rounded-xl border border-line bg-white p-3 text-ink shadow-lg">
         <div className="mb-2 text-sm font-semibold">{title}</div>
         {children}
       </div>
@@ -96,7 +96,11 @@ export function ComponentNode({ id, data, selected, dragging }: NodeProps<Design
             </div>
             <div className="mt-1.5 flex items-baseline justify-between text-[11px]">
               <span className={`font-medium ${status.text}`}>
-                {sim.supportedUsers === Infinity ? "No load" : `Supports ~${formatNumber(sim.supportedUsers)} users`}
+                {!Number.isFinite(item.unitRps)
+                  ? "No published limit"
+                  : sim.supportedUsers === Infinity
+                    ? "No load"
+                    : `Supports ~${formatNumber(sim.supportedUsers)} users`}
               </span>
               <span className="text-zinc-500">{Math.round(utilization * 100)}%</span>
             </div>

@@ -1,10 +1,11 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
-import type { CatalogItem } from "@/lib/catalog";
+import { COST_SOURCE, type CatalogItem } from "@/lib/catalog";
 import { formatNumber, formatPercent, type DesignNodeData, type NodeSim } from "@/lib/simulate";
 import { STATUS_STYLES } from "./icons";
 import { useDesignActions } from "./design-actions";
+import { SourcedValue } from "./source-tag";
 
 const USER_PRESETS = [100_000, 1_000_000, 10_000_000, 100_000_000];
 
@@ -86,7 +87,7 @@ export function NodeProperties({ id, data, item, sim }: { id: string; data: Desi
     <div className="space-y-3">
       <p className="text-xs text-zinc-500">{item.blurb}</p>
 
-      {carriesLoad && (
+      {carriesLoad && Number.isFinite(item.unitRps) && (
         <Slider
           label={`Units (${item.unitLabel})`}
           value={data.units}
@@ -95,12 +96,6 @@ export function NodeProperties({ id, data, item, sim }: { id: string; data: Desi
           max={50}
           onChange={(units) => update({ units })}
         />
-      )}
-      {carriesLoad && (
-        <p className="-mt-2 text-[11px] text-zinc-400">
-          {formatNumber(item.unitRps)} rps per unit
-          {item.unitWriteRps && ` · writes ${formatNumber(item.unitWriteRps)} rps${item.writesScale ? " per unit" : " on the primary only"}`}
-        </p>
       )}
 
       {item.category === "cache" && (
@@ -121,20 +116,44 @@ export function NodeProperties({ id, data, item, sim }: { id: string; data: Desi
           Spread across availability zones
         </label>
       )}
-      {item.managed && carriesLoad && (
-        <p className="text-[11px] text-zinc-500">Managed service: redundancy is handled by the provider ({formatPercent(item.sla ?? 0.999)} SLA).</p>
-      )}
-
       {active && carriesLoad && (
         <div className="grid grid-cols-3 gap-1.5">
           <Stat label="Reads" value={`${formatNumber(sim.load.reads)} rps`} />
           <Stat label="Writes" value={`${formatNumber(sim.load.writes)} rps`} />
           <Stat label="Utilization" value={`${Math.round(sim.utilization * 100)}%`} className={STATUS_STYLES[sim.status].text} />
-          <Stat label="Supports" value={`${formatNumber(sim.supportedUsers)} users`} className={STATUS_STYLES[sim.status].text} />
-          <Stat label="Availability" value={formatPercent(sim.availability)} />
-          <Stat label="Cost" value={`$${formatNumber(item.monthlyCost * data.units)}/mo`} />
+          <Stat
+            label="Supports"
+            value={Number.isFinite(sim.supportedUsers) ? `${formatNumber(sim.supportedUsers)} users` : "No limit"}
+            className={STATUS_STYLES[sim.status].text}
+          />
+          <Stat label="Uptime SLA" value={formatPercent(sim.availability)} />
+          <Stat label="Cost*" value={`$${formatNumber(item.monthlyCost * data.units)}/mo`} />
         </div>
       )}
+
+      <section className="space-y-2.5 border-t border-line pt-3">
+        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Where these numbers come from</h4>
+        {carriesLoad && (
+          <SourcedValue
+            label={item.unitWriteRps ? "Reads per unit" : "Capacity per unit"}
+            value={Number.isFinite(item.unitRps) ? `${formatNumber(item.unitRps)}/s` : "—"}
+            source={item.capacitySource}
+          />
+        )}
+        {carriesLoad && item.unitWriteRps && item.writeSource && (
+          <SourcedValue
+            label={item.writesScale ? "Writes per unit" : "Writes (primary only)"}
+            value={`${formatNumber(item.unitWriteRps)}/s`}
+            source={item.writeSource}
+          />
+        )}
+        <SourcedValue
+          label="Uptime SLA"
+          value={item.slaMultiAz && !item.managed ? `${formatPercent(item.sla)} · ${formatPercent(item.slaMultiAz)} multi-AZ` : formatPercent(item.sla)}
+          source={item.slaSource}
+        />
+        <SourcedValue label="*Cost" value={`$${formatNumber(item.monthlyCost)}/unit`} source={COST_SOURCE} />
+      </section>
 
       <button onClick={() => deleteNode(id)} className="flex items-center gap-1.5 text-xs text-over hover:underline">
         <Trash2 className="size-3.5" /> Remove component

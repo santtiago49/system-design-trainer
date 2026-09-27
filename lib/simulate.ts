@@ -63,11 +63,10 @@ export function nodeName(data: DesignNodeData): string {
 }
 
 function unitAvailability(item: CatalogItem, data: DesignNodeData): number {
-  if (item.managed) return item.sla ?? 0.999;
-  if (data.units >= 2 && data.multiAz) return 0.9999;
-  if (data.multiAz) return 0.9995;
-  if (data.units >= 2) return 0.999;
-  return 0.995;
+  // Published SLAs only distinguish single-AZ from multi-AZ deployments, so the
+  // number of units in one zone doesn't change the committed uptime.
+  if (item.managed || !data.multiAz) return item.sla;
+  return item.slaMultiAz ?? item.sla;
 }
 
 /** What a node lets through to its children after doing its own work. */
@@ -349,8 +348,8 @@ export function formatNumber(value: number): string {
 }
 
 export function formatPercent(value: number): string {
-  const pct = value * 100;
-  return `${pct >= 99.99 ? pct.toFixed(3) : pct.toFixed(2)}%`;
+  // Up to three decimals, without trailing zeros: 99.5%, 99.95%, 99.995%, 100%.
+  return `${parseFloat((value * 100).toFixed(3))}%`;
 }
 
 export { CATEGORY_LABELS };
