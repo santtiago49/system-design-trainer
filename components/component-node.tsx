@@ -7,6 +7,7 @@ import { formatNumber, type DesignNodeData } from "@/lib/simulate";
 import { CATEGORY_ICONS, CustomIcon, PROVIDER_STYLES, ServiceIcon, STATUS_STYLES } from "./icons";
 import { NodeProperties, UsersProperties } from "./node-properties";
 import { useSimulation } from "./simulation-context";
+import { useDesignActions } from "./design-actions";
 
 export type DesignNode = Node<DesignNodeData, "component">;
 
@@ -24,6 +25,7 @@ function PropertiesCard({ visible, title, children }: { visible: boolean; title:
 
 export function ComponentNode({ id, data, selected, dragging }: NodeProps<DesignNode>) {
   const simulation = useSimulation();
+  const { users } = useDesignActions();
   const sim = simulation.nodes[id];
   const item = resolveItem(data.catalogId, { name: data.customName ?? "", category: data.customCategory ?? null });
   const status = STATUS_STYLES[sim?.status ?? "idle"];
@@ -39,7 +41,14 @@ export function ComponentNode({ id, data, selected, dragging }: NodeProps<Design
           <span className="text-sm font-medium">Users</span>
         </div>
         <div className="mt-1.5 text-xs text-white/70">
-          {formatNumber(simulation.users)} DAU · {formatNumber(simulation.peakRps)} rps peak
+          {formatNumber(users)} DAU target
+          {simulation.users === users ? (
+            ` · ${formatNumber(simulation.peakRps)} rps peak`
+          ) : (
+            <div className="text-amber-300">
+              Testing {formatNumber(simulation.users)} users · {formatNumber(simulation.peakRps)} rps
+            </div>
+          )}
         </div>
         <Handle type="source" position={Position.Right} />
         <PropertiesCard visible={showProperties} title="Users">

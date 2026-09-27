@@ -42,6 +42,11 @@ const RAMP_FROM = 0.1;
 const RAMP_TO = 10;
 const edgeTypes = { load: LoadEdge };
 
+/** Position of a load multiple on the ramp's log scale, from 0 to 1. */
+const rampPosition = (multiple: number) => Math.log(multiple / RAMP_FROM) / Math.log(RAMP_TO / RAMP_FROM);
+
+const formatMultiple = (multiple: number) => `${multiple < 1 ? multiple.toFixed(1) : multiple < 10 ? multiple.toFixed(1).replace(/\.0$/, "") : Math.round(multiple)}×`;
+
 type AppNode = DesignNode | LineNode | TextNode;
 type SavedDesign = { nodes: AppNode[]; edges: Edge[]; users: number };
 
@@ -441,16 +446,27 @@ function Board() {
             <div className="absolute right-3 top-3 z-20 flex items-center gap-2">
               {hydrated && <CostLabel cost={baseline.monthlyCost} budget={budget} />}
               {rampUsers !== null && (
-                <div className="w-56 rounded-lg border border-line bg-white px-3 py-1.5 shadow-sm">
+                <div className="w-64 rounded-lg border border-line bg-white px-3 py-1.5 shadow-sm">
                   <div className="flex justify-between text-xs">
                     <span className="text-zinc-500">Load test</span>
-                    <span className="font-medium">{formatNumber(rampUsers)} users</span>
+                    <span>
+                      <span className="font-medium">{formatNumber(rampUsers)} users</span>
+                      <span className="text-zinc-500"> · {formatMultiple(rampUsers / users)} target</span>
+                    </span>
                   </div>
-                  <div className="mt-1 h-1 rounded-full bg-zinc-100">
+                  {/* Log scale from RAMP_FROM× to RAMP_TO× the target, with a tick at 1×. */}
+                  <div className="relative mt-1 h-1 rounded-full bg-zinc-100">
                     <div
-                      className="h-full rounded-full bg-ink"
-                      style={{ width: `${(Math.log(rampUsers / (users * RAMP_FROM)) / Math.log(RAMP_TO / RAMP_FROM)) * 100}%` }}
+                      className={`h-full rounded-full ${rampUsers > users ? "bg-warn" : "bg-ink"}`}
+                      style={{ width: `${rampPosition(rampUsers / users) * 100}%` }}
                     />
+                    <div className="absolute -top-0.5 h-2 w-px bg-ink" style={{ left: `${rampPosition(1) * 100}%` }} />
+                  </div>
+                  <div className="relative mt-0.5 h-3 text-[10px] text-zinc-400">
+                    <span className="absolute -translate-x-1/2" style={{ left: `${rampPosition(1) * 100}%` }}>
+                      target {formatNumber(users)}
+                    </span>
+                    <span className="absolute right-0">{RAMP_TO}×</span>
                   </div>
                 </div>
               )}
