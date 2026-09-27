@@ -15,24 +15,6 @@ npm run dev
 
 Without a key, Jev calls fall back to a clearly labeled mock.
 
-## Azure import (prototype)
-
-Reads a real subscription onto the canvas with "Sign in with Microsoft": the app calls Azure Resource
-Manager on the signed-in user's behalf, read-only, and sees only what that user can see.
-
-Set these in `.env.local` and restart `npm run dev`:
-
-```
-AZURE_CLIENT_ID=<Application (client) ID of the Entra ID app>
-AZURE_CLIENT_SECRET=<a client secret of that app>
-# Optional; must match the redirect URI registered on the app.
-AZURE_REDIRECT_URI=http://localhost:3000/api/auth/callback
-```
-
-The app registration is multi-tenant, with a Web redirect URI of `http://localhost:3000/api/auth/callback`
-and the delegated permission **Azure Service Management → user_impersonation**. In the app, open **Integrations** in the side rail, sign in with Microsoft, and import a subscription. Sessions live in server
-memory, so a restart means signing in again.
-
 ## Levels
 
 15 levels in 4 chapters (`lib/levels.ts`). Each has a brief, a fixed number of users and objectives

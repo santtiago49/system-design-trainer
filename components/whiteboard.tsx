@@ -16,9 +16,8 @@ import {
   type Edge,
   type XYPosition,
 } from "@xyflow/react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Cloud, Loader2, Map as MapIcon, PanelLeftOpen, Play } from "lucide-react";
+import { Loader2, Map as MapIcon, PanelLeftOpen, Play } from "lucide-react";
 import { SCENARIOS } from "@/lib/scenarios";
 import { evaluateLevel, LEVELS_BY_ID, nextLevel, type LevelResult } from "@/lib/levels";
 import { loadProgress, rankFor, recordStars, saveProgress, totalXp, type Progress } from "@/lib/progress";
@@ -33,19 +32,14 @@ import { DesignActionsContext } from "./design-actions";
 import { RunDrawer } from "./run-drawer";
 import { LevelHud } from "./level-hud";
 import { LevelResultModal } from "./level-result";
-import { AzureHud } from "./azure-hud";
-import type { AzureImport } from "@/lib/azure-import";
 import {
   emptyDesign,
-  fetchAzureImport,
   isComponent,
   loadDesign,
-  loadImport,
   loadWorkspace,
   newNode,
   SANDBOX,
   saveDesign,
-  storeAzureImport,
   workspaceScenario,
   type AppNode,
   type SavedDesign,
@@ -109,11 +103,9 @@ function Board() {
   // Line being drawn, in canvas-relative screen pixels for the preview and flow coordinates for the result.
   const [draft, setDraft] = useState<{ start: XYPosition; end: XYPosition; flowStart: XYPosition } | null>(null);
   const [progress, setProgress] = useState<Progress>({ stars: {} });
-  const [reimporting, setReimporting] = useState(false);
   // Fit the view once a newly opened design's nodes have been measured.
   const [fitPending, setFitPending] = useState(false);
   const nodesInitialized = useNodesInitialized();
-  const [azureImport, setAzureImport] = useState<AzureImport | null>(null);
   const [levelEval, setLevelEval] = useState<LevelResult | null>(null);
   const [resultModal, setResultModal] = useState<ResultState | null>(null);
 
@@ -144,7 +136,6 @@ function Board() {
   const openWorkspace = useCallback(
     (next: Workspace) => {
       setWorkspace(next);
-      setAzureImport(next.kind === "azure" ? loadImport(next.subscriptionId) : null);
       applyDesign(loadDesign(next));
       setFitPending(true);
     },
@@ -156,23 +147,6 @@ function Board() {
     fitView({ maxZoom: 1, padding: 0.15 });
     setFitPending(false);
   }, [fitPending, nodesInitialized, fitView]);
-
-  const reimport = useCallback(
-    async (subscriptionId: string) => {
-      if (!confirm("Re-import replaces this canvas with a fresh read of the subscription. Continue?")) return;
-      setReimporting(true);
-      try {
-        openWorkspace(storeAzureImport(await fetchAzureImport(subscriptionId)));
-      } catch (error) {
-        // Signed out or the session expired: Integrations is where you reconnect.
-        alert(error instanceof Error ? error.message : "Re-import failed");
-        router.push("/integrations");
-      } finally {
-        setReimporting(false);
-      }
-    },
-    [openWorkspace, router]
-  );
 
   useEffect(() => {
     const saved = loadWorkspace();
@@ -361,8 +335,8 @@ function Board() {
           {paletteOpen && (
             <aside className="flex min-h-0 flex-col border-r border-line bg-white">
               <Palette
-                key={level?.provider ?? (workspace.kind === "azure" ? "azure" : "aws")}
-                initialProvider={level?.provider ?? (workspace.kind === "azure" ? "azure" : "aws")}
+                key={level?.provider ?? "aws"}
+                initialProvider={level?.provider ?? "aws"}
                 onAdd={(id) => addComponent(id)}
                 onClose={() => togglePalette(false)}
               />
@@ -402,26 +376,11 @@ function Board() {
                   onOpenLevels={() => router.push("/levels")}
                   onReset={() => applyDesign(emptyDesign(level.scenario))}
                 />
-              ) : hydrated && azureImport ? (
-                <AzureHud
-                  key={azureImport.subscriptionId}
-                  result={azureImport}
-                  reimporting={reimporting}
-                  onReimport={() => reimport(azureImport.subscriptionId)}
-                />
               ) : (
                 hydrated && (
-                  <div className="flex gap-2">
-                    <span className="flex items-center gap-2 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 shadow-sm">
-                      <MapIcon className="size-4" /> Free play
-                    </span>
-                    <Link
-                      href="/integrations"
-                      className="flex items-center gap-2 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 shadow-sm hover:text-ink"
-                    >
-                      <Cloud className="size-4 text-azure" /> Import from Azure
-                    </Link>
-                  </div>
+                  <span className="flex items-center gap-2 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 shadow-sm">
+                    <MapIcon className="size-4" /> Free play
+                  </span>
                 )
               )}
             </div>

@@ -3,15 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PenTool, Plug, Target, Trophy, type LucideIcon } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { PenTool, Target, Trophy, type LucideIcon } from "lucide-react";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -34,20 +31,9 @@ type Place = { href: string; label: string; Icon: LucideIcon };
 const PLACES: Place[] = [
   { href: "/", label: "Whiteboard", Icon: PenTool },
   { href: "/levels", label: "Levels", Icon: Trophy },
-  { href: "/integrations", label: "Integrations", Icon: Plug },
 ];
 
-type Me = { configured: boolean; user: { name: string; username: string } | null };
-
-const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase())
-    .join("");
-
-function AppSidebar({ current, me, stars }: { current?: Place; me: Me | null; stars: number }) {
-  const user = me?.user;
+function AppSidebar({ current, stars }: { current?: Place; stars: number }) {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
@@ -89,23 +75,6 @@ function AppSidebar({ current, me, stars }: { current?: Place; me: Me | null; st
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild tooltip={user ? user.username : "Connect Azure"}>
-              <Link href="/integrations">
-                <Avatar className="size-8 rounded-lg">
-                  <AvatarFallback className="rounded-lg">{user ? initials(user.name) : <Plug className="size-4" />}</AvatarFallback>
-                </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">{user ? user.name : "Azure not connected"}</span>
-                  <span className="truncate text-xs text-muted-foreground">{user ? user.username : "Connect in Integrations"}</span>
-                </div>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
     </Sidebar>
   );
 }
@@ -113,24 +82,17 @@ function AppSidebar({ current, me, stars }: { current?: Place; me: Me | null; st
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const current = PLACES.find((p) => (p.href === "/" ? pathname === "/" : pathname.startsWith(p.href)));
-  const [me, setMe] = useState<Me | null>(null);
   const [stars, setStars] = useState(0);
 
-  // Re-read on navigation: signing in and earning stars happen on other pages.
+  // Re-read on navigation: stars are earned on the whiteboard.
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((res) => res.json())
-      .then(setMe)
-      .catch(() => setMe(null));
     setStars(Object.values(loadProgress().stars).reduce((a, b) => a + b, 0));
   }, [pathname]);
-
-  const connected = !!me?.user;
 
   return (
     <TooltipProvider>
       <SidebarProvider className="h-svh">
-        <AppSidebar current={current} me={me} stars={stars} />
+        <AppSidebar current={current} stars={stars} />
         <SidebarInset className="min-h-0 overflow-hidden">
           <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
             <SidebarTrigger className="-ml-1" />
@@ -152,14 +114,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 )}
               </BreadcrumbList>
             </Breadcrumb>
-            {me && (
-              <Button variant="outline" size="sm" className="ml-auto" asChild>
-                <Link href="/integrations">
-                  <span className={`size-2 rounded-full ${connected ? "bg-ok" : "bg-muted-foreground/40"}`} />
-                  {connected ? "Azure connected" : "Connect Azure"}
-                </Link>
-              </Button>
-            )}
           </header>
           <main className="min-h-0 min-w-0 flex-1">{children}</main>
         </SidebarInset>

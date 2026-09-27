@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { BookOpen, Cloud, Lock, Pencil, Star } from "lucide-react";
+import { BookOpen, Lock, Pencil, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Progress as ProgressBar } from "@/components/ui/progress";
 import { CHAPTERS, LEVELS } from "@/lib/levels";
@@ -59,7 +58,7 @@ export function LevelSelect({ progress, currentLevelId, onPlay, onFreePlay }: Pr
           </div>
         </header>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        <div className="mt-6 grid gap-3">
           <button
             onClick={onFreePlay}
             className="flex items-center gap-3 rounded-xl border border-dashed bg-card p-4 text-left transition-colors hover:bg-accent"
@@ -70,16 +69,6 @@ export function LevelSelect({ progress, currentLevelId, onPlay, onFreePlay }: Pr
               <div className="text-xs text-muted-foreground">Open whiteboard with the 1M-user web app scenario. No objectives, no stars.</div>
             </div>
           </button>
-          <Link
-            href="/integrations"
-            className="flex items-center gap-3 rounded-xl border border-dashed border-azure/40 bg-card p-4 text-left transition-colors hover:bg-accent"
-          >
-            <Cloud className="size-5 shrink-0 text-azure" />
-            <div>
-              <div className="text-sm font-semibold">Import from Azure</div>
-              <div className="text-xs text-muted-foreground">Sign in with Microsoft and put a real subscription on the canvas.</div>
-            </div>
-          </Link>
         </div>
 
         {CHAPTERS.map((chapter) => {
