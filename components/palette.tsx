@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CATALOG, CATEGORY_LABELS, CUSTOM_ID, type Category, type Provider } from "@/lib/catalog";
+import { CATALOG, CATEGORY_LABELS, type Category, type Provider } from "@/lib/catalog";
 import { ServiceIcon } from "./icons";
 
 export const DRAG_TYPE = "application/x-sd-component";
@@ -59,7 +59,6 @@ export function Palette({ onAdd }: { onAdd: (catalogId: string) => void }) {
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
         <div className="grid grid-cols-3 gap-1">
           <Tile catalogId="users" name="Users" hint="Traffic source" onAdd={onAdd} />
-          <Tile catalogId={CUSTOM_ID} name="Custom (Jev)" hint="Any technology, e.g. Kafka or MongoDB. Jev decides its role." onAdd={onAdd} />
           {items.map((i) => (
             <Tile key={i.id} catalogId={i.id} name={i.name} hint={`${CATEGORY_LABELS[i.category]}. ${i.blurb}`} onAdd={onAdd} />
           ))}
