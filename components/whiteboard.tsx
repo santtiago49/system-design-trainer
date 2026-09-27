@@ -123,6 +123,23 @@ function loadWorkspace(): Workspace | null {
 
 type ResultState = { result: LevelResult; xpGained: number; rankUp: string | null };
 
+/** Estimated monthly cost of the design, with the level's budget when it has one. */
+function CostLabel({ cost, budget }: { cost: number; budget?: number }) {
+  const over = budget !== undefined && cost > budget;
+  return (
+    <div
+      title="Estimated from rough per-unit costs, not vendor pricing pages."
+      className={`flex items-baseline gap-1 rounded-lg border bg-white px-2.5 py-1.5 text-sm shadow-sm ${over ? "border-over/40" : "border-line"}`}
+    >
+      <span className="text-xs text-zinc-500">Est. cost</span>
+      <span className={`font-semibold ${over ? "text-over" : budget !== undefined ? "text-ok" : "text-ink"}`}>
+        ${formatNumber(cost)}/mo
+      </span>
+      {budget !== undefined && <span className="text-xs text-zinc-500">of ${formatNumber(budget)}</span>}
+    </div>
+  );
+}
+
 function Board() {
   const { screenToFlowPosition, fitView } = useReactFlow();
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -154,6 +171,7 @@ function Board() {
 
   const level = workspace.kind === "level" ? LEVELS_BY_ID[workspace.levelId] : null;
   const scenario = workspaceScenario(workspace);
+  const budget = level ? [...level.required, ...level.bonus].find((o) => o.budget)?.budget : undefined;
 
   const applyDesign = useCallback(
     (design: SavedDesign) => {
@@ -421,6 +439,7 @@ function Board() {
               <CanvasToolbar tool={spaceHeld ? "hand" : tool} onChange={setTool} />
             </div>
             <div className="absolute right-3 top-3 z-20 flex items-center gap-2">
+              {hydrated && <CostLabel cost={baseline.monthlyCost} budget={budget} />}
               {rampUsers !== null && (
                 <div className="w-56 rounded-lg border border-line bg-white px-3 py-1.5 shadow-sm">
                   <div className="flex justify-between text-xs">

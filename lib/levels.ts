@@ -14,6 +14,8 @@ export type Objective = {
   id: string;
   label: string;
   check: (ctx: CheckContext) => boolean;
+  // Set on budget objectives so the UI can show the limit next to the current cost.
+  budget?: number;
 };
 
 export type Level = {
@@ -74,6 +76,7 @@ const survives = (failureId: string, label: string): Objective => ({
 
 const underBudget = (dollars: number): Objective => ({
   id: "budget",
+  budget: dollars,
   label: `Stay under $${dollars.toLocaleString("en-US")}/month (estimated)`,
   check: ({ baseline }) => baseline.monthlyCost <= dollars,
 });
