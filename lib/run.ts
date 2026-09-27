@@ -54,7 +54,12 @@ function judge(
 ): { verdict: Verdict; detail: string } {
   const before = servingTiers(baseNodes, baseline);
   const remaining = servingTiers(afterNodes, after);
-  const lost = [...before].filter((tier) => !remaining.has(tier));
+  // Losing a cache isn't an outage: reads fall through to the database, and the
+  // re-simulation already charges that extra load. Anything behind the cache
+  // that gets cut off still counts as lost.
+  const lost = [...before].filter((tier) => tier !== "cache" && !remaining.has(tier));
+  const cacheLost = before.has("cache") && !remaining.has("cache");
+  const fallback = cacheLost ? "Cache lost, reads fall back to the database. " : "";
   if (lost.length > 0) {
     // Name what actually failed; the other lost tiers are just cut off behind it.
     const failed = afterNodes
@@ -71,12 +76,12 @@ function judge(
     const util = bottleneck ? after.nodes[bottleneck.id].utilization : 0;
     return {
       verdict: "degraded",
-      detail: `Serves ~${formatUsers(after.supportedUsers)} of ${formatUsers(demand)} users. ${
+      detail: `${fallback}Serves ~${formatUsers(after.supportedUsers)} of ${formatUsers(demand)} users. ${
         bottleneck ? `${nodeName(bottleneck.data)} at ${Math.round(util * 100)}%.` : ""
       }`,
     };
   }
-  return { verdict: "survives", detail: `Still serves up to ~${formatUsers(after.supportedUsers)} users.` };
+  return { verdict: "survives", detail: `${fallback}Still serves up to ~${formatUsers(after.supportedUsers)} users.` };
 }
 
 function formatUsers(value: number): string {
