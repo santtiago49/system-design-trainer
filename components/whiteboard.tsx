@@ -217,6 +217,7 @@ function Board() {
   const [progress, setProgress] = useState<Progress>({ stars: {} });
   const [showLevels, setShowLevels] = useState(false);
   const [showAzureImport, setShowAzureImport] = useState(false);
+  const [signInError, setSignInError] = useState<string | null>(null);
   // Fit the view once a newly opened design's nodes have been measured.
   const [fitPending, setFitPending] = useState(false);
   const nodesInitialized = useNodesInitialized();
@@ -285,6 +286,14 @@ function Board() {
     setProgress(loadProgress());
     // First visit: start at the level map.
     if (!saved) setShowLevels(true);
+    // Back from Microsoft sign-in: reopen the import dialog, then tidy the URL.
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("import") || params.has("signin_error")) {
+      setSignInError(params.get("signin_error"));
+      setShowLevels(false);
+      setShowAzureImport(true);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
     try {
       setPaletteOpen(localStorage.getItem("sdt:palette-open") !== "false");
     } catch {}
@@ -646,7 +655,16 @@ function Board() {
             )}
           </main>
 
-          {showAzureImport && <AzureImportDialog onImported={onAzureImported} onClose={() => setShowAzureImport(false)} />}
+          {showAzureImport && (
+            <AzureImportDialog
+              onImported={onAzureImported}
+              onClose={() => {
+                setShowAzureImport(false);
+                setSignInError(null);
+              }}
+              initialError={signInError}
+            />
+          )}
           {showLevels && (
             <LevelSelect
               progress={progress}

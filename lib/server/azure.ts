@@ -1,17 +1,16 @@
 import "server-only";
 
-import { DefaultAzureCredential } from "@azure/identity";
 import { ResourceGraphClient } from "@azure/arm-resourcegraph";
+import type { TokenCredential } from "@azure/core-auth";
 import type { AzureImport, ImportedEdge, ImportedResource } from "../azure-import";
 
-// Locally this resolves to the developer's `az login` session; in production the
-// same code picks up a managed identity or workload identity. Nothing is stored.
-const credential = new DefaultAzureCredential();
-const graph = new ResourceGraphClient(credential);
+// Every call runs with the signed-in user's own token, so the import sees exactly
+// what that user can see in Azure. Nothing is written and no token reaches the browser.
 
 const ARM = "https://management.azure.com";
 
-async function query<T>(kql: string, subscriptions?: string[]): Promise<T[]> {
+async function query<T>(credential: TokenCredential, kql: string, subscriptions?: string[]): Promise<T[]> {
+  const graph = new ResourceGraphClient(credential);
   const rows: T[] = [];
   let skipToken: string | undefined;
   do {
@@ -26,16 +25,18 @@ async function query<T>(kql: string, subscriptions?: string[]): Promise<T[]> {
   return rows;
 }
 
-async function armGet<T>(path: string, apiVersion: string): Promise<T | null> {
+async function armGet<T>(credential: TokenCredential, path: string, apiVersion: string): Promise<T | null> {
   const token = await credential.getToken(`${ARM}/.default`);
+  if (!token) return null;
   const res = await fetch(`${ARM}${path}?api-version=${apiVersion}`, {
     headers: { Authorization: `Bearer ${token.token}` },
   });
   return res.ok ? ((await res.json()) as T) : null;
 }
 
-export async function listSubscriptions(): Promise<{ id: string; name: string }[]> {
+export async function listSubscriptions(credential: TokenCredential): Promise<{ id: string; name: string }[]> {
   const rows = await query<{ subscriptionId: string; name: string }>(
+    credential,
     "ResourceContainers | where type == 'microsoft.resources/subscriptions' | project subscriptionId, name | order by name asc"
   );
   return rows.map((r) => ({ id: r.subscriptionId, name: r.name }));
@@ -189,16 +190,17 @@ function hostsOf(row: Row): string[] {
   return [...hosts];
 }
 
-export async function importSubscription(subscriptionId: string): Promise<AzureImport> {
+export async function importSubscription(credential: TokenCredential, subscriptionId: string): Promise<AzureImport> {
   const subs = [subscriptionId];
   const [rows, plans, counts, subscriptionName] = await Promise.all([
     query<Row>(
+      credential,
       `Resources | where type in~ (${MAPPED_TYPES.map((t) => `'${t}'`).join(", ")}) | project id, name, type, kind, resourceGroup, sku, zones, properties`,
       subs
     ),
-    query<Row>("Resources | where type == 'microsoft.web/serverfarms' | project id, name, type, kind, resourceGroup, sku, zones, properties", subs),
-    query<{ type: string; n: number }>("Resources | summarize n = count() by type", subs),
-    query<{ name: string }>(`ResourceContainers | where type == 'microsoft.resources/subscriptions' and subscriptionId == '${subscriptionId}' | project name`),
+    query<Row>(credential, "Resources | where type == 'microsoft.web/serverfarms' | project id, name, type, kind, resourceGroup, sku, zones, properties", subs),
+    query<{ type: string; n: number }>(credential, "Resources | summarize n = count() by type", subs),
+    query<{ name: string }>(credential, `ResourceContainers | where type == 'microsoft.resources/subscriptions' and subscriptionId == '${subscriptionId}' | project name`),
   ]);
 
   const planById = new Map(plans.map((p) => [p.id.toLowerCase(), p]));
@@ -221,7 +223,7 @@ export async function importSubscription(subscriptionId: string): Promise<AzureI
     else unmapped.set(c.type, (unmapped.get(c.type) ?? 0) + c.n);
   }
 
-  const edges = await inferEdges(rows, resources);
+  const edges = await inferEdges(credential, rows, resources);
 
   return {
     subscriptionId,
@@ -240,7 +242,7 @@ export async function importSubscription(subscriptionId: string): Promise<AzureI
  * The one topology source in the tracer bullet: Application Gateway backends and
  * Front Door origins name host names, which we match to the resources that serve them.
  */
-async function inferEdges(rows: Row[], resources: ImportedResource[]): Promise<ImportedEdge[]> {
+async function inferEdges(credential: TokenCredential, rows: Row[], resources: ImportedResource[]): Promise<ImportedEdge[]> {
   const byHost = new Map<string, string>();
   for (const r of resources) for (const h of r.hosts) byHost.set(h, r.azureId);
   const edges: ImportedEdge[] = [];
@@ -255,9 +257,9 @@ async function inferEdges(rows: Row[], resources: ImportedResource[]): Promise<I
       for (const pool of pools) for (const a of pool.properties?.backendAddresses ?? []) if (a.fqdn) link(row.id, a.fqdn, "gateway backend");
     }
     if (row.type === "microsoft.cdn/profiles" && row.sku?.name?.includes("AzureFrontDoor")) {
-      const groups = await armGet<{ value: { name: string }[] }>(`${row.id}/originGroups`, "2024-02-01");
+      const groups = await armGet<{ value: { name: string }[] }>(credential, `${row.id}/originGroups`, "2024-02-01");
       for (const g of groups?.value ?? []) {
-        const origins = await armGet<{ value: { properties: { hostName: string } }[] }>(`${row.id}/originGroups/${g.name}/origins`, "2024-02-01");
+        const origins = await armGet<{ value: { properties: { hostName: string } }[] }>(credential, `${row.id}/originGroups/${g.name}/origins`, "2024-02-01");
         for (const o of origins?.value ?? []) link(row.id, o.properties.hostName, "Front Door origin");
       }
     }

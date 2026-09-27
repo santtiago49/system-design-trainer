@@ -1,11 +1,21 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { AuthNotConfiguredError, NotSignedInError, SESSION_COOKIE, userCredential } from "@/lib/server/auth";
 
-/** Turns Azure SDK failures into a message the canvas can show. */
+/** The signed-in user's Azure credential for this request. Throws when nobody is signed in. */
+export async function requestCredential() {
+  return userCredential((await cookies()).get(SESSION_COOKIE)?.value);
+}
+
+/** Turns auth and Azure SDK failures into a message the canvas can show. */
 export function azureError(error: unknown) {
-  console.error(error);
-  const name = error instanceof Error ? error.name : "";
-  if (name === "CredentialUnavailableError" || name === "AuthenticationError") {
-    return NextResponse.json({ error: "No Azure login found. Run `az login` in a terminal, then try again." }, { status: 401 });
+  if (error instanceof AuthNotConfiguredError) {
+    return NextResponse.json({ error: error.message, code: "not-configured" }, { status: 503 });
   }
-  return NextResponse.json({ error: "Azure request failed. Check the server logs." }, { status: 502 });
+  // MSAL throws InteractionRequiredAuthError when the refresh token expired or consent changed.
+  if (error instanceof NotSignedInError || (error instanceof Error && error.name === "InteractionRequiredAuthError")) {
+    return NextResponse.json({ error: "Sign in with Microsoft to read your Azure subscriptions.", code: "signin" }, { status: 401 });
+  }
+  console.error(error);
+  return NextResponse.json({ error: "Azure request failed. Check the server logs.", code: "azure" }, { status: 502 });
 }
