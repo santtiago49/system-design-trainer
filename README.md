@@ -30,7 +30,7 @@ AZURE_REDIRECT_URI=http://localhost:3000/api/auth/callback
 ```
 
 The app registration is multi-tenant, with a Web redirect URI of `http://localhost:3000/api/auth/callback`
-and the delegated permission **Azure Service Management → user_impersonation**. Sessions live in server
+and the delegated permission **Azure Service Management → user_impersonation**. In the app, open **Integrations** in the side rail, sign in with Microsoft, and import a subscription. Sessions live in server
 memory, so a restart means signing in again.
 
 ## Levels

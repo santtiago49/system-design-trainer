@@ -3,8 +3,8 @@ import { AuthNotConfiguredError, startLogin } from "@/lib/server/auth";
 
 export async function GET(request: Request) {
   // Only same-app paths, so the sign-in can't be used to bounce users elsewhere.
-  const returnTo = new URL(request.url).searchParams.get("returnTo") ?? "/";
-  const safeReturn = returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/";
+  const returnTo = new URL(request.url).searchParams.get("returnTo") ?? "/integrations";
+  const safeReturn = returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/integrations";
   try {
     return NextResponse.redirect(await startLogin(safeReturn));
   } catch (error) {

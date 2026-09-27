@@ -1,6 +1,7 @@
 "use client";
 
-import { BookOpen, Cloud, Lock, Pencil, Star, X } from "lucide-react";
+import Link from "next/link";
+import { BookOpen, Cloud, Lock, Pencil, Star } from "lucide-react";
 import { CHAPTERS, LEVELS } from "@/lib/levels";
 import { isUnlocked, rankFor, totalXp, type Progress } from "@/lib/progress";
 
@@ -38,15 +39,13 @@ type Props = {
   currentLevelId: string | null;
   onPlay: (levelId: string) => void;
   onFreePlay: () => void;
-  onImportAzure: () => void;
-  onClose: (() => void) | null;
 };
 
-export function LevelSelect({ progress, currentLevelId, onPlay, onFreePlay, onImportAzure, onClose }: Props) {
+export function LevelSelect({ progress, currentLevelId, onPlay, onFreePlay }: Props) {
   const earned = Object.values(progress.stars).reduce((a, b) => a + b, 0);
 
   return (
-    <div className="absolute inset-0 z-40 overflow-y-auto bg-canvas/95 backdrop-blur-sm">
+    <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 py-8">
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -57,11 +56,6 @@ export function LevelSelect({ progress, currentLevelId, onPlay, onFreePlay, onIm
           </div>
           <div className="flex items-center gap-4">
             <RankBadge progress={progress} />
-            {onClose && (
-              <button onClick={onClose} title="Close" className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-ink">
-                <X className="size-5" />
-              </button>
-            )}
           </div>
         </header>
 
@@ -76,16 +70,16 @@ export function LevelSelect({ progress, currentLevelId, onPlay, onFreePlay, onIm
               <div className="text-xs text-zinc-500">Open whiteboard with the 1M-user web app scenario. No objectives, no stars.</div>
             </div>
           </button>
-          <button
-            onClick={onImportAzure}
+          <Link
+            href="/integrations"
             className="flex items-center gap-3 rounded-xl border border-dashed border-azure/40 bg-white/60 p-4 text-left hover:border-azure hover:bg-white"
           >
             <Cloud className="size-5 shrink-0 text-azure" />
             <div>
               <div className="text-sm font-semibold">Import from Azure</div>
-              <div className="text-xs text-zinc-500">Read a real subscription with your Azure CLI login and check it on the canvas.</div>
+              <div className="text-xs text-zinc-500">Sign in with Microsoft and put a real subscription on the canvas.</div>
             </div>
-          </button>
+          </Link>
         </div>
 
         {CHAPTERS.map((chapter) => {

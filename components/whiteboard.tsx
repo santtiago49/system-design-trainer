@@ -16,10 +16,10 @@ import {
   type Edge,
   type XYPosition,
 } from "@xyflow/react";
-import { nanoid } from "nanoid";
-import { Cloud, Map as MapIcon, PanelLeftOpen, Play } from "lucide-react";
-import { CATALOG_BY_ID } from "@/lib/catalog";
-import { SCENARIOS, SCENARIOS_BY_ID, type Scenario } from "@/lib/scenarios";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Cloud, Loader2, Map as MapIcon, PanelLeftOpen, Play } from "lucide-react";
+import { SCENARIOS } from "@/lib/scenarios";
 import { evaluateLevel, LEVELS_BY_ID, nextLevel, type LevelResult } from "@/lib/levels";
 import { loadProgress, rankFor, recordStars, saveProgress, totalXp, type Progress } from "@/lib/progress";
 import { formatNumber, simulate, type DesignNodeData } from "@/lib/simulate";
@@ -33,9 +33,24 @@ import { DesignActionsContext } from "./design-actions";
 import { RunDrawer } from "./run-drawer";
 import { LevelHud } from "./level-hud";
 import { LevelResultModal } from "./level-result";
-import { LevelSelect } from "./level-select";
-import { AzureHud, AzureImportDialog } from "./azure-hud";
-import { layout, monitoringPosition, type AzureImport } from "@/lib/azure-import";
+import { AzureHud } from "./azure-hud";
+import type { AzureImport } from "@/lib/azure-import";
+import {
+  emptyDesign,
+  fetchAzureImport,
+  isComponent,
+  loadDesign,
+  loadImport,
+  loadWorkspace,
+  newNode,
+  SANDBOX,
+  saveDesign,
+  storeAzureImport,
+  workspaceScenario,
+  type AppNode,
+  type SavedDesign,
+  type Workspace,
+} from "@/lib/workspace";
 import { SimulationContext } from "./simulation-context";
 
 const nodeTypes = { component: ComponentNode, line: LineNodeView, text: TextNodeView };
@@ -50,132 +65,10 @@ const rampPosition = (multiple: number) => Math.log(multiple / RAMP_FROM) / Math
 
 const formatMultiple = (multiple: number) => `${multiple < 1 ? multiple.toFixed(1) : multiple < 10 ? multiple.toFixed(1).replace(/\.0$/, "") : Math.round(multiple)}×`;
 
-type AppNode = DesignNode | LineNode | TextNode;
-type SavedDesign = { nodes: AppNode[]; edges: Edge[]; users: number };
-
-const isComponent = (node: AppNode): node is DesignNode => node.type === "component";
-
 /** True when a key press is meant for a text field, not a canvas shortcut. */
 function isTyping(event: KeyboardEvent): boolean {
   const target = event.target as HTMLElement | null;
   return !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
-}
-
-function newNode(catalogId: string, position: { x: number; y: number }): DesignNode {
-  const item = CATALOG_BY_ID[catalogId];
-  return {
-    id: nanoid(8),
-    type: "component",
-    position,
-    data: { catalogId, units: item?.defaultUnits ?? 1, multiAz: false, hitRate: 0.8, customName: "", customCategory: null },
-  };
-}
-
-type Workspace =
-  | { kind: "sandbox"; scenarioId: string }
-  | { kind: "level"; levelId: string }
-  | { kind: "azure"; subscriptionId: string };
-
-const SANDBOX: Workspace = { kind: "sandbox", scenarioId: SCENARIOS[0].id };
-
-function workspaceScenario(workspace: Workspace): Scenario {
-  if (workspace.kind === "level") return LEVELS_BY_ID[workspace.levelId].scenario;
-  // An imported subscription has no scenario of its own; the traffic profile of a
-  // typical web app stands in until real metrics arrive, with users editable.
-  if (workspace.kind === "azure") return SCENARIOS_BY_ID["web-1m"];
-  return SCENARIOS_BY_ID[workspace.scenarioId];
-}
-
-function designKey(workspace: Workspace): string {
-  if (workspace.kind === "level") return `sdt:design:level:${workspace.levelId}`;
-  if (workspace.kind === "azure") return `sdt:design:azure:${workspace.subscriptionId}`;
-  return `sdt:design:${workspace.scenarioId}`;
-}
-
-const importKey = (subscriptionId: string) => `sdt:azure-import:${subscriptionId}`;
-
-function loadImport(subscriptionId: string): AzureImport | null {
-  try {
-    const raw = localStorage.getItem(importKey(subscriptionId));
-    return raw ? (JSON.parse(raw) as AzureImport) : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Canvas design for an imported subscription: its resources in tier columns plus a Users node. */
-function azureDesign(result: AzureImport, users: number): SavedDesign {
-  const ids = new Map<string, string>();
-  const nodes: AppNode[] = [newNode("users", { x: -300, y: 0 })];
-  const placed = layout(result.resources);
-  for (const r of placed) {
-    const node = newNode(r.catalogId, r.position);
-    node.data = { ...node.data, units: r.units, multiAz: r.multiAz, azure: { id: r.azureId, name: r.name, resourceGroup: r.resourceGroup, sku: r.sku } };
-    ids.set(r.azureId, node.id);
-    nodes.push(node);
-  }
-  if (result.monitoring > 0) {
-    const node = newNode("az-monitor", monitoringPosition(placed));
-    node.data = { ...node.data, azure: { id: "monitoring", name: `Monitoring (${result.monitoring} resources)`, resourceGroup: "", sku: null } };
-    nodes.push(node);
-  }
-  const edges: Edge[] = result.edges.flatMap((e) => {
-    const source = ids.get(e.source), target = ids.get(e.target);
-    return source && target ? [{ id: `${source}-${target}`, source, target, type: "load" }] : [];
-  });
-  return { nodes, edges, users };
-}
-
-function emptyDesign(scenario: Scenario): SavedDesign {
-  return {
-    nodes: [newNode("users", { x: 0, y: 160 })],
-    edges: [],
-    users: scenario.dailyActiveUsers,
-  };
-}
-
-function loadDesign(workspace: Workspace): SavedDesign {
-  const scenario = workspaceScenario(workspace);
-  try {
-    const raw = localStorage.getItem(designKey(workspace));
-    if (raw) {
-      const design = JSON.parse(raw) as SavedDesign;
-      // Selection is session state; restoring it would reopen a properties card on load.
-      // Empty notes are abandoned drafts.
-      const nodes = design.nodes.filter((n) => n.type !== "text" || n.data.text.trim());
-      // Levels fix the number of users.
-      const users = workspace.kind === "level" ? scenario.dailyActiveUsers : design.users;
-      return { ...design, users, nodes: nodes.map((n) => ({ ...n, selected: false })) };
-    }
-  } catch {}
-  return emptyDesign(scenario);
-}
-
-function saveDesign(workspace: Workspace, design: SavedDesign) {
-  try {
-    localStorage.setItem(designKey(workspace), JSON.stringify(design));
-    localStorage.setItem("sdt:workspace", JSON.stringify(workspace));
-  } catch {}
-}
-
-function loadWorkspace(): Workspace | null {
-  try {
-    const raw = localStorage.getItem("sdt:workspace");
-    if (raw) {
-      const workspace = JSON.parse(raw) as Workspace;
-      const valid =
-        workspace.kind === "level"
-          ? LEVELS_BY_ID[workspace.levelId]
-          : workspace.kind === "azure"
-            ? loadImport(workspace.subscriptionId)
-            : SCENARIOS_BY_ID[workspace.scenarioId];
-      if (valid) return workspace;
-    }
-    // Designs saved before levels existed.
-    const legacy = localStorage.getItem("sdt:scenario");
-    if (legacy && SCENARIOS_BY_ID[legacy]) return { kind: "sandbox", scenarioId: legacy };
-  } catch {}
-  return null;
 }
 
 type ResultState = { result: LevelResult; xpGained: number; rankUp: string | null };
@@ -199,6 +92,7 @@ function CostLabel({ cost, budget }: { cost: number; budget?: number }) {
 
 function Board() {
   const { screenToFlowPosition, fitView } = useReactFlow();
+  const router = useRouter();
   const canvasRef = useRef<HTMLDivElement>(null);
   const [workspace, setWorkspace] = useState<Workspace>(SANDBOX);
   const [hydrated, setHydrated] = useState(false);
@@ -215,9 +109,7 @@ function Board() {
   // Line being drawn, in canvas-relative screen pixels for the preview and flow coordinates for the result.
   const [draft, setDraft] = useState<{ start: XYPosition; end: XYPosition; flowStart: XYPosition } | null>(null);
   const [progress, setProgress] = useState<Progress>({ stars: {} });
-  const [showLevels, setShowLevels] = useState(false);
-  const [showAzureImport, setShowAzureImport] = useState(false);
-  const [signInError, setSignInError] = useState<string | null>(null);
+  const [reimporting, setReimporting] = useState(false);
   // Fit the view once a newly opened design's nodes have been measured.
   const [fitPending, setFitPending] = useState(false);
   const nodesInitialized = useNodesInitialized();
@@ -254,7 +146,6 @@ function Board() {
       setWorkspace(next);
       setAzureImport(next.kind === "azure" ? loadImport(next.subscriptionId) : null);
       applyDesign(loadDesign(next));
-      setShowLevels(false);
       setFitPending(true);
     },
     [applyDesign, fitView]
@@ -266,18 +157,21 @@ function Board() {
     setFitPending(false);
   }, [fitPending, nodesInitialized, fitView]);
 
-  const onAzureImported = useCallback(
-    (result: AzureImport) => {
-      const next: Workspace = { kind: "azure", subscriptionId: result.subscriptionId };
+  const reimport = useCallback(
+    async (subscriptionId: string) => {
+      if (!confirm("Re-import replaces this canvas with a fresh read of the subscription. Continue?")) return;
+      setReimporting(true);
       try {
-        localStorage.setItem(importKey(result.subscriptionId), JSON.stringify(result));
-        // A fresh import replaces the previous layout of this subscription.
-        localStorage.setItem(designKey(next), JSON.stringify(azureDesign(result, SCENARIOS_BY_ID["web-1m"].dailyActiveUsers)));
-      } catch {}
-      setShowAzureImport(false);
-      openWorkspace(next);
+        openWorkspace(storeAzureImport(await fetchAzureImport(subscriptionId)));
+      } catch (error) {
+        // Signed out or the session expired: Integrations is where you reconnect.
+        alert(error instanceof Error ? error.message : "Re-import failed");
+        router.push("/integrations");
+      } finally {
+        setReimporting(false);
+      }
     },
-    [openWorkspace]
+    [openWorkspace, router]
   );
 
   useEffect(() => {
@@ -285,15 +179,7 @@ function Board() {
     openWorkspace(saved ?? SANDBOX);
     setProgress(loadProgress());
     // First visit: start at the level map.
-    if (!saved) setShowLevels(true);
-    // Back from Microsoft sign-in: reopen the import dialog, then tidy the URL.
-    const params = new URLSearchParams(window.location.search);
-    if (params.has("import") || params.has("signin_error")) {
-      setSignInError(params.get("signin_error"));
-      setShowLevels(false);
-      setShowAzureImport(true);
-      window.history.replaceState(null, "", window.location.pathname);
-    }
+    if (!saved) router.replace("/levels");
     try {
       setPaletteOpen(localStorage.getItem("sdt:palette-open") !== "false");
     } catch {}
@@ -470,7 +356,7 @@ function Board() {
   return (
     <DesignActionsContext.Provider value={actions}>
       <SimulationContext.Provider value={simulation}>
-        <div className={`relative grid h-screen ${paletteOpen ? "grid-cols-[300px_1fr]" : "grid-cols-[1fr]"}`}>
+        <div className={`relative grid h-full ${paletteOpen ? "grid-cols-[300px_1fr]" : "grid-cols-[1fr]"}`}>
           {/* Left sidebar */}
           {paletteOpen && (
             <aside className="flex min-h-0 flex-col border-r border-line bg-white">
@@ -513,33 +399,28 @@ function Board() {
                   bestStars={progress.stars[level.id] ?? 0}
                   result={levelEval}
                   stale={stale}
-                  onOpenLevels={() => setShowLevels(true)}
+                  onOpenLevels={() => router.push("/levels")}
                   onReset={() => applyDesign(emptyDesign(level.scenario))}
                 />
               ) : hydrated && azureImport ? (
                 <AzureHud
                   key={azureImport.subscriptionId}
                   result={azureImport}
-                  onReimport={() => {
-                    if (confirm("Re-import replaces this canvas with a fresh read of the subscription. Continue?")) setShowAzureImport(true);
-                  }}
-                  onOpenLevels={() => setShowLevels(true)}
+                  reimporting={reimporting}
+                  onReimport={() => reimport(azureImport.subscriptionId)}
                 />
               ) : (
                 hydrated && (
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => setShowLevels(true)}
-                      className="flex items-center gap-2 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 shadow-sm hover:text-ink"
-                    >
-                      <MapIcon className="size-4" /> Levels · free play
-                    </button>
-                    <button
-                      onClick={() => setShowAzureImport(true)}
+                    <span className="flex items-center gap-2 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 shadow-sm">
+                      <MapIcon className="size-4" /> Free play
+                    </span>
+                    <Link
+                      href="/integrations"
                       className="flex items-center gap-2 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 shadow-sm hover:text-ink"
                     >
                       <Cloud className="size-4 text-azure" /> Import from Azure
-                    </button>
+                    </Link>
                   </div>
                 )
               )}
@@ -655,30 +536,6 @@ function Board() {
             )}
           </main>
 
-          {showAzureImport && (
-            <AzureImportDialog
-              onImported={onAzureImported}
-              onClose={() => {
-                setShowAzureImport(false);
-                setSignInError(null);
-              }}
-              initialError={signInError}
-            />
-          )}
-          {showLevels && (
-            <LevelSelect
-              progress={progress}
-              currentLevelId={level?.id ?? null}
-              onPlay={(levelId) => openWorkspace({ kind: "level", levelId })}
-              onFreePlay={() => openWorkspace(SANDBOX)}
-              onImportAzure={() => {
-                setShowLevels(false);
-                setShowAzureImport(true);
-              }}
-              onClose={() => setShowLevels(false)}
-            />
-          )}
-  
         </div>
       </SimulationContext.Provider>
     </DesignActionsContext.Provider>

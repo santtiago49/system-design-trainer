@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   const state = url.searchParams.get("state");
   const failure = url.searchParams.get("error_description") ?? url.searchParams.get("error");
   if (failure || !code || !state) {
-    return NextResponse.redirect(new URL(`/?signin_error=${encodeURIComponent(failure ?? "Sign-in was cancelled.")}`, url));
+    return NextResponse.redirect(new URL(`/integrations?signin_error=${encodeURIComponent(failure ?? "Sign-in was cancelled.")}`, url));
   }
   try {
     const { sessionId, returnTo } = await completeLogin(code, state);
@@ -23,6 +23,6 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error(error);
     const message = error instanceof Error ? error.message : "Sign-in failed.";
-    return NextResponse.redirect(new URL(`/?signin_error=${encodeURIComponent(message)}`, url));
+    return NextResponse.redirect(new URL(`/integrations?signin_error=${encodeURIComponent(message)}`, url));
   }
 }
