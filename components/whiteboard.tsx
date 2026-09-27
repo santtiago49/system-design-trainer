@@ -13,6 +13,7 @@ import {
   useReactFlow,
   type Connection,
   type Edge,
+  type XYPosition,
 } from "@xyflow/react";
 import { nanoid } from "nanoid";
 import { PanelLeftOpen, Play } from "lucide-react";
@@ -21,20 +22,31 @@ import { SCENARIOS, SCENARIOS_BY_ID } from "@/lib/scenarios";
 import { formatNumber, simulate, type DesignNodeData } from "@/lib/simulate";
 import { runTests, type RunReport } from "@/lib/run";
 import { ComponentNode, type DesignNode } from "./component-node";
+import { createLine, createText, LineNodeView, TextNodeView, type LineNode, type TextData, type TextNode } from "./annotations";
+import { CanvasToolbar, TOOL_SHORTCUTS, type Tool } from "./canvas-toolbar";
 import { LoadEdge } from "./load-edge";
 import { DRAG_TYPE, Palette } from "./palette";
 import { DesignActionsContext } from "./design-actions";
 import { RunDrawer } from "./run-drawer";
 import { SimulationContext } from "./simulation-context";
 
-const nodeTypes = { component: ComponentNode };
+const nodeTypes = { component: ComponentNode, line: LineNodeView, text: TextNodeView };
 const RAMP_MS = 4000;
 // The load test ramps from 0.1× to 10× the target users.
 const RAMP_FROM = 0.1;
 const RAMP_TO = 10;
 const edgeTypes = { load: LoadEdge };
 
-type SavedDesign = { nodes: DesignNode[]; edges: Edge[]; users: number };
+type AppNode = DesignNode | LineNode | TextNode;
+type SavedDesign = { nodes: AppNode[]; edges: Edge[]; users: number };
+
+const isComponent = (node: AppNode): node is DesignNode => node.type === "component";
+
+/** True when a key press is meant for a text field, not a canvas shortcut. */
+function isTyping(event: KeyboardEvent): boolean {
+  const target = event.target as HTMLElement | null;
+  return !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+}
 
 function newNode(catalogId: string, position: { x: number; y: number }): DesignNode {
   const item = CATALOG_BY_ID[catalogId];
@@ -57,7 +69,13 @@ function emptyDesign(scenarioId: string): SavedDesign {
 function loadDesign(scenarioId: string): SavedDesign {
   try {
     const raw = localStorage.getItem(`sdt:design:${scenarioId}`);
-    if (raw) return JSON.parse(raw) as SavedDesign;
+    if (raw) {
+      const design = JSON.parse(raw) as SavedDesign;
+      // Selection is session state; restoring it would reopen a properties card on load.
+      // Empty notes are abandoned drafts.
+      const nodes = design.nodes.filter((n) => n.type !== "text" || n.data.text.trim());
+      return { ...design, nodes: nodes.map((n) => ({ ...n, selected: false })) };
+    }
   } catch {}
   return emptyDesign(scenarioId);
 }
@@ -74,7 +92,7 @@ function Board() {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [scenarioId, setScenarioId] = useState(SCENARIOS[0].id);
   const [hydrated, setHydrated] = useState(false);
-  const [nodes, setNodes, onNodesChange] = useNodesState<DesignNode>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<AppNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [users, setUsers] = useState(SCENARIOS[0].dailyActiveUsers);
   const [paletteOpen, setPaletteOpen] = useState(true);
@@ -82,6 +100,10 @@ function Board() {
   const [report, setReport] = useState<RunReport | null>(null);
   const [reportSignature, setReportSignature] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [tool, setTool] = useState<Tool>("select");
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  // Line being drawn, in canvas-relative screen pixels for the preview and flow coordinates for the result.
+  const [draft, setDraft] = useState<{ start: XYPosition; end: XYPosition; flowStart: XYPosition } | null>(null);
 
   const togglePalette = useCallback((open: boolean) => {
     setPaletteOpen(open);
@@ -129,7 +151,7 @@ function Board() {
     if (hydrated) saveDesign(scenarioId, { nodes, edges, users });
   }, [hydrated, scenarioId, nodes, edges, users]);
 
-  const graphNodes = useMemo(() => nodes.map((n) => ({ id: n.id, data: n.data })), [nodes]);
+  const graphNodes = useMemo(() => nodes.filter(isComponent).map((n) => ({ id: n.id, data: n.data })), [nodes]);
   const baseline = useMemo(() => simulate(graphNodes, edges, scenario, users), [graphNodes, edges, scenario, users]);
   const ramp = useMemo(
     () => (rampUsers === null ? null : simulate(graphNodes, edges, scenario, rampUsers)),
@@ -181,7 +203,14 @@ function Board() {
 
   const updateNode = useCallback(
     (id: string, patch: Partial<DesignNodeData>) => {
-      setNodes((current) => current.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));
+      setNodes((current) => current.map((n) => (n.id === id && isComponent(n) ? { ...n, data: { ...n.data, ...patch } } : n)));
+    },
+    [setNodes]
+  );
+
+  const updateAnnotation = useCallback(
+    (id: string, patch: Partial<TextData>) => {
+      setNodes((current) => current.map((n) => (n.id === id && n.type === "text" ? { ...n, data: { ...n.data, ...patch } } : n)));
     },
     [setNodes]
   );
@@ -194,18 +223,76 @@ function Board() {
     [setNodes, setEdges]
   );
 
-  // Esc closes the properties card by clearing the selection.
+  // Tool shortcuts (V/H/L/T), Esc to deselect, and holding Space for the hand.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setNodes((current) => current.map((n) => (n.selected ? { ...n, selected: false } : n)));
+      if (isTyping(event)) return;
+      if (event.key === "Escape") {
+        setTool("select");
+        setDraft(null);
+        setNodes((current) => current.map((n) => (n.selected ? { ...n, selected: false } : n)));
+      } else if (event.code === "Space") {
+        event.preventDefault();
+        setSpaceHeld(true);
+      } else if (!event.metaKey && !event.ctrlKey && !event.altKey && TOOL_SHORTCUTS[event.key.toLowerCase()]) {
+        setTool(TOOL_SHORTCUTS[event.key.toLowerCase()]);
+      }
     };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space") setSpaceHeld(false);
+    };
+    const onBlur = () => setSpaceHeld(false);
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
   }, [setNodes]);
 
+  const panning = tool === "hand" || spaceHeld;
+  const drawing = (tool === "line" || tool === "text") && !spaceHeld;
+
+  const localPoint = (event: React.PointerEvent): XYPosition => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  };
+
+  const onDrawStart = (event: React.PointerEvent) => {
+    if (event.button !== 0) return;
+    const flow = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    if (tool === "text") {
+      // Keep the click from moving focus away from the note's text box.
+      event.preventDefault();
+      setNodes((current) => [...current.map((n) => ({ ...n, selected: false })), createText(flow)]);
+      setTool("select");
+      return;
+    }
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const point = localPoint(event);
+    setDraft({ start: point, end: point, flowStart: flow });
+  };
+
+  const onDrawMove = (event: React.PointerEvent) => {
+    if (draft) setDraft({ ...draft, end: localPoint(event) });
+  };
+
+  const onDrawEnd = (event: React.PointerEvent) => {
+    if (!draft) return;
+    const flowEnd = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    // Ignore clicks that barely moved.
+    if (Math.hypot(draft.end.x - draft.start.x, draft.end.y - draft.start.y) > 4) {
+      setNodes((current) => [...current, createLine(draft.flowStart, flowEnd)]);
+      setTool("select");
+    }
+    setDraft(null);
+  };
+
   const actions = useMemo(
-    () => ({ users, setUsers, updateNode, deleteNode }),
-    [users, updateNode, deleteNode]
+    () => ({ users, setUsers, updateNode, updateAnnotation, deleteNode }),
+    [users, updateNode, updateAnnotation, deleteNode]
   );
 
   const onConnect = useCallback(
@@ -249,7 +336,10 @@ function Board() {
                 <PanelLeftOpen className="size-4" /> Components
               </button>
             )}
-            <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
+            <div className="absolute left-1/2 top-3 z-20 -translate-x-1/2">
+              <CanvasToolbar tool={spaceHeld ? "hand" : tool} onChange={setTool} />
+            </div>
+            <div className="absolute right-3 top-3 z-20 flex items-center gap-2">
               {rampUsers !== null && (
                 <div className="w-56 rounded-lg border border-line bg-white px-3 py-1.5 shadow-sm">
                   <div className="flex justify-between text-xs">
@@ -281,14 +371,36 @@ function Board() {
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
+              // Select: drag on empty canvas to box-select, middle mouse pans. Hand (or Space): drag pans.
+              panOnDrag={panning ? true : [1]}
+              selectionOnDrag={!panning}
+              nodesDraggable={!panning}
+              nodesConnectable={!panning}
+              elementsSelectable={!panning}
+              className={panning ? "cursor-grab active:cursor-grabbing" : undefined}
               proOptions={{ hideAttribution: true }}
             >
               <Background gap={20} color="#d9d8d2" />
               <Controls showInteractive={false} />
-              <MiniMap pannable zoomable className="!bg-white" />
+              {/* The minimap panel sits above the properties card, so it steps aside while one is open. */}
+              {!nodes.some((n) => n.selected && isComponent(n)) && <MiniMap pannable zoomable className="!bg-white" />}
             </ReactFlow>
-            {nodes.length <= 1 && (
-              <div className="pointer-events-none absolute inset-x-0 top-6 text-center text-sm text-zinc-400">
+            {drawing && (
+              <div
+                className={`absolute inset-0 z-10 ${tool === "text" ? "cursor-text" : "cursor-crosshair"}`}
+                onPointerDown={onDrawStart}
+                onPointerMove={onDrawMove}
+                onPointerUp={onDrawEnd}
+              >
+                {draft && (
+                  <svg className="pointer-events-none absolute inset-0 size-full">
+                    <line x1={draft.start.x} y1={draft.start.y} x2={draft.end.x} y2={draft.end.y} stroke="#52525b" strokeWidth={2} strokeLinecap="round" />
+                  </svg>
+                )}
+              </div>
+            )}
+            {nodes.filter(isComponent).length <= 1 && (
+              <div className="pointer-events-none absolute inset-x-0 top-20 text-center text-sm text-zinc-400">
                 Drag components from the left, then connect them starting from Users.
               </div>
             )}

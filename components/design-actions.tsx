@@ -2,11 +2,13 @@
 
 import { createContext, useContext } from "react";
 import type { DesignNodeData } from "@/lib/simulate";
+import type { TextData } from "./annotations";
 
 export type DesignActions = {
   users: number;
   setUsers: (users: number) => void;
   updateNode: (id: string, patch: Partial<DesignNodeData>) => void;
+  updateAnnotation: (id: string, patch: Partial<TextData>) => void;
   deleteNode: (id: string) => void;
 };
 
