@@ -64,7 +64,7 @@ export function ComponentNode({ id, data }: NodeProps<DesignNode>) {
           </div>
         ) : !item ? (
           <div className="text-xs text-zinc-400">Name it in the inspector to classify</div>
-        ) : sim?.status === "idle" ? (
+        ) : !sim || sim.status === "idle" ? (
           <div className="text-xs text-zinc-400">Not on the traffic path</div>
         ) : item.category === "monitoring" ? (
           <div className="text-xs text-zinc-500">Observes the system</div>
