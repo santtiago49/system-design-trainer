@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { LayoutGrid, List, PanelLeftClose } from "lucide-react";
-import { CATALOG, CATEGORY_LABELS, type Category, type Provider } from "@/lib/catalog";
+import { useEffect, useMemo, useState } from "react";
+import { LayoutGrid, List, PanelLeftClose, Search, X } from "lucide-react";
+import { CATALOG, CATEGORY_LABELS, type CatalogItem, type Category, type Provider } from "@/lib/catalog";
 import { ServiceIcon } from "./icons";
 
 export const DRAG_TYPE = "application/x-sd-component";
@@ -11,74 +11,72 @@ const CATEGORY_ORDER = Object.keys(CATEGORY_LABELS) as Category[];
 const VIEW_KEY = "sdt:palette-view";
 
 type View = "grid" | "list";
+type Entry = { id: string; name: string; category: Category; hint: string };
 
-function Tile({ catalogId, name, category, hint, view, onAdd }: {
-  catalogId: string;
-  name: string;
-  category: string;
-  hint: string;
-  view: View;
-  onAdd: (catalogId: string) => void;
-}) {
-  const drag = {
+const USERS: Entry = { id: "users", name: "Users", category: "client", hint: "Traffic source" };
+
+const PROVIDERS: { id: Exclude<Provider, "generic">; label: string; accent: string }[] = [
+  { id: "aws", label: "AWS", accent: "border-aws text-ink" },
+  { id: "azure", label: "Azure", accent: "border-azure text-ink" },
+];
+
+function toEntry(item: CatalogItem): Entry {
+  return { id: item.id, name: item.name, category: item.category, hint: `${CATEGORY_LABELS[item.category]}. ${item.blurb}` };
+}
+
+function dragProps(entry: Entry, onAdd: (id: string) => void) {
+  return {
     draggable: true,
     onDragStart: (event: React.DragEvent) => {
-      event.dataTransfer.setData(DRAG_TYPE, catalogId);
+      event.dataTransfer.setData(DRAG_TYPE, entry.id);
       event.dataTransfer.effectAllowed = "move";
     },
-    onClick: () => onAdd(catalogId),
-    title: `${name}: ${hint}`,
+    onClick: () => onAdd(entry.id),
+    title: `${entry.name}: ${entry.hint}`,
   };
+}
 
-  if (view === "list") {
-    return (
-      <button {...drag} className="flex w-full cursor-grab items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-zinc-100 active:cursor-grabbing">
-        <span className="flex size-6 shrink-0 items-center justify-center">
-          <ServiceIcon catalogId={catalogId} category={null} size={24} />
-        </span>
-        <span className="min-w-0 flex-1 truncate text-sm text-zinc-800">{name}</span>
-        <span className="shrink-0 text-[11px] text-zinc-400">{category}</span>
-      </button>
-    );
-  }
-
+function ListRow({ entry, onAdd }: { entry: Entry; onAdd: (id: string) => void }) {
   return (
-    <button {...drag} className="flex cursor-grab flex-col items-center gap-1.5 rounded-lg px-1 py-2 text-center hover:bg-zinc-100 active:cursor-grabbing">
-      <span className="flex size-8 items-center justify-center">
-        <ServiceIcon catalogId={catalogId} category={null} size={32} />
-      </span>
-      <span className="line-clamp-2 text-[11px] leading-tight text-zinc-700">{name}</span>
+    <button
+      {...dragProps(entry, onAdd)}
+      className="flex w-full cursor-grab items-center gap-3 rounded-lg px-2 py-1.5 text-left text-sm text-zinc-800 hover:bg-zinc-100 active:cursor-grabbing"
+    >
+      <ServiceIcon catalogId={entry.id} category={null} size={24} />
+      <span className="truncate">{entry.name}</span>
     </button>
   );
 }
 
-function Segmented<T extends string>({ value, options, onChange }: {
-  value: T;
-  options: { value: T; label: React.ReactNode; title: string }[];
-  onChange: (value: T) => void;
-}) {
+function GridTile({ entry, onAdd }: { entry: Entry; onAdd: (id: string) => void }) {
   return (
-    <div className="flex rounded-lg bg-zinc-100 p-0.5 text-xs">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          title={o.title}
-          onClick={() => onChange(o.value)}
-          className={`flex items-center rounded-md px-1.5 py-0.5 font-medium ${value === o.value ? "bg-white shadow-sm" : "text-zinc-500"}`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <button
+      {...dragProps(entry, onAdd)}
+      className="flex cursor-grab flex-col items-center gap-1.5 rounded-lg px-1 py-2.5 text-center hover:bg-zinc-100 active:cursor-grabbing"
+    >
+      <ServiceIcon catalogId={entry.id} category={null} size={32} />
+      <span className="line-clamp-2 text-[11px] leading-tight text-zinc-700">{entry.name}</span>
+    </button>
+  );
+}
+
+function ViewButton({ active, title, onClick, children }: { active: boolean; title: string; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      title={title}
+      aria-pressed={active}
+      onClick={onClick}
+      className={`rounded-md p-1 ${active ? "text-ink" : "text-zinc-400 hover:text-zinc-600"}`}
+    >
+      {children}
+    </button>
   );
 }
 
 export function Palette({ onAdd, onClose }: { onAdd: (catalogId: string) => void; onClose: () => void }) {
   const [provider, setProvider] = useState<Exclude<Provider, "generic">>("aws");
   const [view, setView] = useState<View>("grid");
-  const items = CATALOG.filter((c) => c.provider === provider).sort(
-    (a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)
-  );
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     try {
@@ -93,48 +91,95 @@ export function Palette({ onAdd, onClose }: { onAdd: (catalogId: string) => void
     } catch {}
   };
 
+  const entries = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const all = [
+      USERS,
+      ...CATALOG.filter((c) => c.provider === provider)
+        .sort((a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category))
+        .map(toEntry),
+    ];
+    if (!q) return all;
+    return all.filter((e) => e.name.toLowerCase().includes(q) || CATEGORY_LABELS[e.category].toLowerCase().includes(q));
+  }, [provider, query]);
+
+  const groups = useMemo(() => {
+    const byCategory = new Map<Category, Entry[]>();
+    for (const entry of entries) byCategory.set(entry.category, [...(byCategory.get(entry.category) ?? []), entry]);
+    return [...byCategory];
+  }, [entries]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-4">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Components</h2>
-        <div className="flex items-center gap-1.5">
-          <Segmented
-            value={provider}
-            onChange={setProvider}
-            options={[
-              { value: "aws", label: "AWS", title: "AWS services" },
-              { value: "azure", label: "Azure", title: "Azure services" },
-            ]}
-          />
-          <Segmented
-            value={view}
-            onChange={changeView}
-            options={[
-              { value: "grid", label: <LayoutGrid className="size-3.5" />, title: "Grid view" },
-              { value: "list", label: <List className="size-3.5" />, title: "List view" },
-            ]}
-          />
-          <button onClick={onClose} title="Hide components" className="rounded-md p-1 text-zinc-500 hover:bg-zinc-100 hover:text-ink">
+      <div className="space-y-3 px-4 pt-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Components</h2>
+          <button onClick={onClose} title="Hide components" className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-ink">
             <PanelLeftClose className="size-4" />
           </button>
         </div>
+
+        <label className="flex items-center gap-2 rounded-lg border border-line bg-zinc-50 px-2.5 py-1.5 focus-within:border-zinc-400 focus-within:bg-white">
+          <Search className="size-4 shrink-0 text-zinc-400" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search services"
+            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-400"
+          />
+          {query && (
+            <button onClick={() => setQuery("")} title="Clear search" className="text-zinc-400 hover:text-ink">
+              <X className="size-3.5" />
+            </button>
+          )}
+        </label>
+
+        <div className="flex items-end justify-between border-b border-line">
+          <div className="flex gap-4">
+            {PROVIDERS.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setProvider(p.id)}
+                className={`-mb-px border-b-2 pb-2 text-sm font-medium transition-colors ${
+                  provider === p.id ? p.accent : "border-transparent text-zinc-400 hover:text-zinc-600"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex pb-1.5">
+            <ViewButton active={view === "grid"} title="Grid view" onClick={() => changeView("grid")}>
+              <LayoutGrid className="size-4" />
+            </ViewButton>
+            <ViewButton active={view === "list"} title="List view" onClick={() => changeView("list")}>
+              <List className="size-4" />
+            </ViewButton>
+          </div>
+        </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-        <div className={view === "grid" ? "grid grid-cols-3 gap-1" : "flex flex-col"}>
-          <Tile catalogId="users" name="Users" category="Clients" hint="Traffic source" view={view} onAdd={onAdd} />
-          {items.map((i) => (
-            <Tile
-              key={i.id}
-              catalogId={i.id}
-              name={i.name}
-              category={CATEGORY_LABELS[i.category]}
-              hint={`${CATEGORY_LABELS[i.category]}. ${i.blurb}`}
-              view={view}
-              onAdd={onAdd}
-            />
-          ))}
-        </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2">
+        {entries.length === 0 ? (
+          <p className="px-2 py-6 text-center text-sm text-zinc-400">No services match “{query}”.</p>
+        ) : view === "grid" ? (
+          <div className="grid grid-cols-3 gap-1">
+            {entries.map((e) => (
+              <GridTile key={e.id} entry={e} onAdd={onAdd} />
+            ))}
+          </div>
+        ) : (
+          groups.map(([category, group]) => (
+            <section key={category}>
+              <h3 className="sticky top-0 z-10 bg-white/95 px-2 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wide text-zinc-400 backdrop-blur">
+                {CATEGORY_LABELS[category]}
+              </h3>
+              {group.map((e) => (
+                <ListRow key={e.id} entry={e} onAdd={onAdd} />
+              ))}
+            </section>
+          ))
+        )}
       </div>
     </div>
   );
