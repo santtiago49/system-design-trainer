@@ -46,3 +46,21 @@ body {
   stroke-dasharray: 6 4;
   animation: dash 0.8s linear infinite;
 }
+
+@keyframes star-pop {
+  0% {
+    transform: scale(0.2) rotate(-30deg);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.25) rotate(8deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(0);
+  }
+}
+
+.star-pop {
+  animation: star-pop 0.45s ease-out both;
+}

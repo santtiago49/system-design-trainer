@@ -401,6 +401,17 @@ export const CATALOG: CatalogItem[] = [
     slaSource: azureSla("99.95% in one region; 99.99% for Premium across two or more regions"),
     monthlyCost: 350,
   }),
+  item("az-appservice", "azure", "App Service", "compute", "Managed platform for web apps and APIs.", {
+    unitRps: 500,
+    capacitySource: ASSUMED("Microsoft publishes plan limits (up to 10 instances on Standard, 30 on Premium by default), not requests/s. Throughput per instance depends on plan size and your code."),
+    unitLabel: "instances",
+    defaultUnits: 2,
+    managed: false,
+    sla: 0.9995,
+    slaMultiAz: 0.9999,
+    slaSource: azureSla("99.95% without availability zones; 99.99% across two or more zones"),
+    monthlyCost: 70,
+  }),
   item("az-vmss", "azure", "VM Scale Sets", "compute", "Autoscaling virtual machines.", {
     unitRps: 500,
     capacitySource: APP_SERVER,

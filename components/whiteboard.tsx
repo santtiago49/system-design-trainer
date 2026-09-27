@@ -16,9 +16,11 @@ import {
   type XYPosition,
 } from "@xyflow/react";
 import { nanoid } from "nanoid";
-import { PanelLeftOpen, Play } from "lucide-react";
+import { Map as MapIcon, PanelLeftOpen, Play } from "lucide-react";
 import { CATALOG_BY_ID } from "@/lib/catalog";
-import { SCENARIOS, SCENARIOS_BY_ID } from "@/lib/scenarios";
+import { SCENARIOS, SCENARIOS_BY_ID, type Scenario } from "@/lib/scenarios";
+import { evaluateLevel, LEVELS_BY_ID, nextLevel, type LevelResult } from "@/lib/levels";
+import { loadProgress, rankFor, recordStars, saveProgress, totalXp, type Progress } from "@/lib/progress";
 import { formatNumber, simulate, type DesignNodeData } from "@/lib/simulate";
 import { runTests, type RunReport } from "@/lib/run";
 import { ComponentNode, type DesignNode } from "./component-node";
@@ -28,6 +30,9 @@ import { LoadEdge } from "./load-edge";
 import { DRAG_TYPE, Palette } from "./palette";
 import { DesignActionsContext } from "./design-actions";
 import { RunDrawer } from "./run-drawer";
+import { LevelHud } from "./level-hud";
+import { LevelResultModal } from "./level-result";
+import { LevelSelect } from "./level-select";
 import { SimulationContext } from "./simulation-context";
 
 const nodeTypes = { component: ComponentNode, line: LineNodeView, text: TextNodeView };
@@ -58,39 +63,70 @@ function newNode(catalogId: string, position: { x: number; y: number }): DesignN
   };
 }
 
-function emptyDesign(scenarioId: string): SavedDesign {
+type Workspace = { kind: "sandbox"; scenarioId: string } | { kind: "level"; levelId: string };
+
+const SANDBOX: Workspace = { kind: "sandbox", scenarioId: SCENARIOS[0].id };
+
+function workspaceScenario(workspace: Workspace): Scenario {
+  return workspace.kind === "level" ? LEVELS_BY_ID[workspace.levelId].scenario : SCENARIOS_BY_ID[workspace.scenarioId];
+}
+
+function designKey(workspace: Workspace): string {
+  return workspace.kind === "level" ? `sdt:design:level:${workspace.levelId}` : `sdt:design:${workspace.scenarioId}`;
+}
+
+function emptyDesign(scenario: Scenario): SavedDesign {
   return {
     nodes: [newNode("users", { x: 0, y: 160 })],
     edges: [],
-    users: SCENARIOS_BY_ID[scenarioId].dailyActiveUsers,
+    users: scenario.dailyActiveUsers,
   };
 }
 
-function loadDesign(scenarioId: string): SavedDesign {
+function loadDesign(workspace: Workspace): SavedDesign {
+  const scenario = workspaceScenario(workspace);
   try {
-    const raw = localStorage.getItem(`sdt:design:${scenarioId}`);
+    const raw = localStorage.getItem(designKey(workspace));
     if (raw) {
       const design = JSON.parse(raw) as SavedDesign;
       // Selection is session state; restoring it would reopen a properties card on load.
       // Empty notes are abandoned drafts.
       const nodes = design.nodes.filter((n) => n.type !== "text" || n.data.text.trim());
-      return { ...design, nodes: nodes.map((n) => ({ ...n, selected: false })) };
+      // Levels fix the number of users.
+      const users = workspace.kind === "level" ? scenario.dailyActiveUsers : design.users;
+      return { ...design, users, nodes: nodes.map((n) => ({ ...n, selected: false })) };
     }
   } catch {}
-  return emptyDesign(scenarioId);
+  return emptyDesign(scenario);
 }
 
-function saveDesign(scenarioId: string, design: SavedDesign) {
+function saveDesign(workspace: Workspace, design: SavedDesign) {
   try {
-    localStorage.setItem(`sdt:design:${scenarioId}`, JSON.stringify(design));
-    localStorage.setItem("sdt:scenario", scenarioId);
+    localStorage.setItem(designKey(workspace), JSON.stringify(design));
+    localStorage.setItem("sdt:workspace", JSON.stringify(workspace));
   } catch {}
 }
+
+function loadWorkspace(): Workspace | null {
+  try {
+    const raw = localStorage.getItem("sdt:workspace");
+    if (raw) {
+      const workspace = JSON.parse(raw) as Workspace;
+      if (workspace.kind === "level" ? LEVELS_BY_ID[workspace.levelId] : SCENARIOS_BY_ID[workspace.scenarioId]) return workspace;
+    }
+    // Designs saved before levels existed.
+    const legacy = localStorage.getItem("sdt:scenario");
+    if (legacy && SCENARIOS_BY_ID[legacy]) return { kind: "sandbox", scenarioId: legacy };
+  } catch {}
+  return null;
+}
+
+type ResultState = { result: LevelResult; xpGained: number; rankUp: string | null };
 
 function Board() {
   const { screenToFlowPosition, fitView } = useReactFlow();
   const canvasRef = useRef<HTMLDivElement>(null);
-  const [scenarioId, setScenarioId] = useState(SCENARIOS[0].id);
+  const [workspace, setWorkspace] = useState<Workspace>(SANDBOX);
   const [hydrated, setHydrated] = useState(false);
   const [nodes, setNodes, onNodesChange] = useNodesState<AppNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -104,6 +140,10 @@ function Board() {
   const [spaceHeld, setSpaceHeld] = useState(false);
   // Line being drawn, in canvas-relative screen pixels for the preview and flow coordinates for the result.
   const [draft, setDraft] = useState<{ start: XYPosition; end: XYPosition; flowStart: XYPosition } | null>(null);
+  const [progress, setProgress] = useState<Progress>({ stars: {} });
+  const [showLevels, setShowLevels] = useState(false);
+  const [levelEval, setLevelEval] = useState<LevelResult | null>(null);
+  const [resultModal, setResultModal] = useState<ResultState | null>(null);
 
   const togglePalette = useCallback((open: boolean) => {
     setPaletteOpen(open);
@@ -112,7 +152,8 @@ function Board() {
     } catch {}
   }, []);
 
-  const scenario = SCENARIOS_BY_ID[scenarioId];
+  const level = workspace.kind === "level" ? LEVELS_BY_ID[workspace.levelId] : null;
+  const scenario = workspaceScenario(workspace);
 
   const applyDesign = useCallback(
     (design: SavedDesign) => {
@@ -121,35 +162,37 @@ function Board() {
       setUsers(design.users);
       setReport(null);
       setPreview(null);
+      setLevelEval(null);
+      setResultModal(null);
     },
     [setNodes, setEdges]
   );
 
-  const switchScenario = useCallback(
-    (id: string) => {
-      setScenarioId(id);
-      applyDesign(loadDesign(id));
+  const openWorkspace = useCallback(
+    (next: Workspace) => {
+      setWorkspace(next);
+      applyDesign(loadDesign(next));
+      setShowLevels(false);
       requestAnimationFrame(() => fitView({ maxZoom: 1, padding: 0.15 }));
     },
     [applyDesign, fitView]
   );
 
   useEffect(() => {
-    let initial = SCENARIOS[0].id;
-    try {
-      const stored = localStorage.getItem("sdt:scenario");
-      if (stored && SCENARIOS_BY_ID[stored]) initial = stored;
-    } catch {}
-    switchScenario(initial);
+    const saved = loadWorkspace();
+    openWorkspace(saved ?? SANDBOX);
+    setProgress(loadProgress());
+    // First visit: start at the level map.
+    if (!saved) setShowLevels(true);
     try {
       setPaletteOpen(localStorage.getItem("sdt:palette-open") !== "false");
     } catch {}
     setHydrated(true);
-  }, [switchScenario]);
+  }, [openWorkspace]);
 
   useEffect(() => {
-    if (hydrated) saveDesign(scenarioId, { nodes, edges, users });
-  }, [hydrated, scenarioId, nodes, edges, users]);
+    if (hydrated) saveDesign(workspace, { nodes, edges, users });
+  }, [hydrated, workspace, nodes, edges, users]);
 
   const graphNodes = useMemo(() => nodes.filter(isComponent).map((n) => ({ id: n.id, data: n.data })), [nodes]);
   const baseline = useMemo(() => simulate(graphNodes, edges, scenario, users), [graphNodes, edges, scenario, users]);
@@ -178,12 +221,23 @@ function Board() {
         requestAnimationFrame(tick);
       } else {
         setRampUsers(null);
-        setReport(runTests(graphNodes, edges, scenario, users));
+        const nextReport = runTests(graphNodes, edges, scenario, users);
+        setReport(nextReport);
         setReportSignature(signature);
+        if (level) {
+          const result = evaluateLevel(level, { nodes: graphNodes, edges, baseline, report: nextReport });
+          setLevelEval(result);
+          const recorded = recordStars(progress, level.id, result.stars);
+          saveProgress(recorded.progress);
+          setProgress(recorded.progress);
+          const before = rankFor(totalXp(progress)).title;
+          const after = rankFor(totalXp(recorded.progress)).title;
+          setResultModal({ result, xpGained: recorded.xpGained, rankUp: after !== before ? after : null });
+        }
       }
     };
     requestAnimationFrame(tick);
-  }, [graphNodes, edges, scenario, users, signature]);
+  }, [graphNodes, edges, scenario, users, signature, level, baseline, progress]);
 
   const addComponent = useCallback(
     (catalogId: string, position?: { x: number; y: number }) => {
@@ -291,8 +345,8 @@ function Board() {
   };
 
   const actions = useMemo(
-    () => ({ users, setUsers, updateNode, updateAnnotation, deleteNode }),
-    [users, updateNode, updateAnnotation, deleteNode]
+    () => ({ users, usersLocked: level !== null, setUsers: level ? () => {} : setUsers, updateNode, updateAnnotation, deleteNode }),
+    [users, level, updateNode, updateAnnotation, deleteNode]
   );
 
   const onConnect = useCallback(
@@ -306,11 +360,16 @@ function Board() {
   return (
     <DesignActionsContext.Provider value={actions}>
       <SimulationContext.Provider value={simulation}>
-        <div className={`grid h-screen ${paletteOpen ? "grid-cols-[300px_1fr]" : "grid-cols-[1fr]"}`}>
+        <div className={`relative grid h-screen ${paletteOpen ? "grid-cols-[300px_1fr]" : "grid-cols-[1fr]"}`}>
           {/* Left sidebar */}
           {paletteOpen && (
             <aside className="flex min-h-0 flex-col border-r border-line bg-white">
-              <Palette onAdd={(id) => addComponent(id)} onClose={() => togglePalette(false)} />
+              <Palette
+                key={level?.provider ?? "aws"}
+                initialProvider={level?.provider ?? "aws"}
+                onAdd={(id) => addComponent(id)}
+                onClose={() => togglePalette(false)}
+              />
             </aside>
           )}
   
@@ -328,14 +387,36 @@ function Board() {
               if (catalogId) addComponent(catalogId, screenToFlowPosition({ x: event.clientX - 100, y: event.clientY - 30 }));
             }}
           >
-            {!paletteOpen && (
-              <button
-                onClick={() => togglePalette(true)}
-                className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 shadow-sm hover:text-ink"
-              >
-                <PanelLeftOpen className="size-4" /> Components
-              </button>
-            )}
+            <div className="absolute left-3 top-3 z-20 flex flex-col items-start gap-2">
+              {!paletteOpen && (
+                <button
+                  onClick={() => togglePalette(true)}
+                  className="flex items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 shadow-sm hover:text-ink"
+                >
+                  <PanelLeftOpen className="size-4" /> Components
+                </button>
+              )}
+              {hydrated && level ? (
+                <LevelHud
+                  key={level.id}
+                  level={level}
+                  bestStars={progress.stars[level.id] ?? 0}
+                  result={levelEval}
+                  stale={stale}
+                  onOpenLevels={() => setShowLevels(true)}
+                  onReset={() => applyDesign(emptyDesign(level.scenario))}
+                />
+              ) : (
+                hydrated && (
+                  <button
+                    onClick={() => setShowLevels(true)}
+                    className="flex items-center gap-2 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 shadow-sm hover:text-ink"
+                  >
+                    <MapIcon className="size-4" /> Levels · free play
+                  </button>
+                )
+              )}
+            </div>
             <div className="absolute left-1/2 top-3 z-20 -translate-x-1/2">
               <CanvasToolbar tool={spaceHeld ? "hand" : tool} onChange={setTool} />
             </div>
@@ -404,6 +485,20 @@ function Board() {
                 Drag components from the left, then connect them starting from Users.
               </div>
             )}
+            {level && resultModal && (
+              <LevelResultModal
+                level={level}
+                result={resultModal.result}
+                xpGained={resultModal.xpGained}
+                rankUp={resultModal.rankUp}
+                nextLevel={nextLevel(level.id)}
+                onNext={() => {
+                  const next = nextLevel(level.id);
+                  if (next) openWorkspace({ kind: "level", levelId: next.id });
+                }}
+                onClose={() => setResultModal(null)}
+              />
+            )}
             {report && rampUsers === null && (
               <RunDrawer
                 report={report}
@@ -418,6 +513,16 @@ function Board() {
               />
             )}
           </main>
+
+          {showLevels && (
+            <LevelSelect
+              progress={progress}
+              currentLevelId={level?.id ?? null}
+              onPlay={(levelId) => openWorkspace({ kind: "level", levelId })}
+              onFreePlay={() => openWorkspace(SANDBOX)}
+              onClose={() => setShowLevels(false)}
+            />
+          )}
   
         </div>
       </SimulationContext.Provider>

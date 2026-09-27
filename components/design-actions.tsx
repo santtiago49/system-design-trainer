@@ -6,6 +6,8 @@ import type { TextData } from "./annotations";
 
 export type DesignActions = {
   users: number;
+  // Levels fix the number of users; only free play lets you change it.
+  usersLocked: boolean;
   setUsers: (users: number) => void;
   updateNode: (id: string, patch: Partial<DesignNodeData>) => void;
   updateAnnotation: (id: string, patch: Partial<TextData>) => void;

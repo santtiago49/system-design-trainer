@@ -15,6 +15,14 @@ npm run dev
 
 Without a key, Jev calls fall back to a clearly labeled mock.
 
+## Levels
+
+15 levels in 4 chapters (`lib/levels.ts`). Each has a brief, a fixed number of users and objectives
+checked by the Run: clearing every required objective earns 1 star and each bonus objective one more.
+Stars give XP and a rank; progress is kept in the browser. Chapter 4 rebuilds reference architectures
+from the [Azure Architecture Center](https://learn.microsoft.com/en-us/azure/architecture/browse/) and
+links to the original once you clear the level. Free play keeps the open whiteboard.
+
 ## How it works
 
 - **Canvas**: [React Flow](https://reactflow.dev) (`@xyflow/react`). Designs are saved per scenario in localStorage.

@@ -48,7 +48,14 @@ function Slider({ label, value, display, min, max, step = 1, onChange }: {
 
 /** Target users, edited from the Users node. */
 export function UsersProperties() {
-  const { users, setUsers } = useDesignActions();
+  const { users, setUsers, usersLocked } = useDesignActions();
+  if (usersLocked) {
+    return (
+      <p className="text-xs text-zinc-600">
+        <span className="font-medium">{users.toLocaleString("en-US")}</span> daily active users. The level sets this number.
+      </p>
+    );
+  }
   return (
     <div className="space-y-2">
       <label className="block text-xs font-medium text-zinc-600">

@@ -73,8 +73,12 @@ function ViewButton({ active, title, onClick, children }: { active: boolean; tit
   );
 }
 
-export function Palette({ onAdd, onClose }: { onAdd: (catalogId: string) => void; onClose: () => void }) {
-  const [provider, setProvider] = useState<Exclude<Provider, "generic">>("aws");
+export function Palette({ onAdd, onClose, initialProvider = "aws" }: {
+  onAdd: (catalogId: string) => void;
+  onClose: () => void;
+  initialProvider?: Exclude<Provider, "generic">;
+}) {
+  const [provider, setProvider] = useState<Exclude<Provider, "generic">>(initialProvider);
   const [view, setView] = useState<View>("grid");
   const [query, setQuery] = useState("");
 
